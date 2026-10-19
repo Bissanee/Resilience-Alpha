@@ -167,7 +167,7 @@ Actions :
 
 ## 11. Décisions ouvertes (à trancher lundi)
 
-- [ ] Langage de l'API : Node.js ou FastAPI
+- [ ] Langage de l'API : Node.js
 - [ ] Modèle Ollama retenu (≤ 8B) et hébergement (PC Hôte ou PC de délestage)
 - [ ] Format exact du jeu de données d'entraînement du détecteur
 - [ ] Numéro d'équipe `G<n>` pour le nom du dossier de rendu

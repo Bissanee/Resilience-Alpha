@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs: [{ targets: ["prometheus:9090"] }]
+  - job_name: api-paiement
+    static_configs: [{ targets: ["api-paiement:4000"], labels: { service: api-paiement } }]
+  - job_name: auth
+    static_configs: [{ targets: ["auth:4001"], labels: { service: auth } }]
+  - job_name: remediation
+    static_configs: [{ targets: ["remediation:5000"], labels: { service: remediation } }]
+  - job_name: detector
+    static_configs: [{ targets: ["detector:5100"], labels: { service: detector } }]
+  - job_name: cadvisor
+    static_configs: [{ targets: ["cadvisor:8080"] }]

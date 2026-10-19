@@ -1,0 +1,13 @@
+apiVersion: 1
+
+providers:
+  - name: Resilience Alpha
+    orgId: 1
+    folder: Resilience Alpha
+    folderUid: resilience-alpha
+    type: file
+    disableDeletion: true
+    editable: true
+    updateIntervalSeconds: 10
+    options:
+      path: /etc/grafana/provisioning/dashboards/json

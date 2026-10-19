@@ -2,6 +2,7 @@
 .env
 *.key
 *.pem
-__pyache__/
+__pycache__/
+*.py[cod]
 node_modules/
 *.zip

@@ -1,7 +1,6 @@
-# Resilience-Alpha : squelette de la plateforme
-# Démarrage : cp .env.example .env && ./scripts/init-stubs.sh && docker compose up -d --build
-# Les services « stub » répondent sur /health et /metrics en attendant le vrai code.
-# Chaque responsable remplace le contenu de son dossier services/<nom>/ (Dockerfile + code).
+# Resilience-Alpha - orchestration locale du demonstrateur
+# Demarrage : copier .env.example vers .env, adapter les valeurs, puis executer :
+# docker compose up -d --build
 name: resilience-alpha
 
 x-logging: &logging
@@ -10,139 +9,169 @@ x-logging: &logging
     max-size: "10m"
     max-file: "3"
 
-# Durcissement de base pour les services applicatifs (retirer une ligne seulement si nécessaire, et le noter dans docs/)
-x-hardened: &hardened
+x-app-base: &app-base
   read_only: true
   cap_drop: [ALL]
   security_opt: ["no-new-privileges:true"]
-  tmpfs: ["/tmp"]
+  tmpfs: ["/tmp:size=64m,mode=1777"]
   logging: *logging
   restart: unless-stopped
-  networks: [resilience-net]
 
 networks:
-  resilience-net:
-    name: resilience-net
+  # Seuls les services possedant un port publie rejoignent ce reseau.
+  edge-net:
+  app-net:
+    internal: true
+  remediation-docker-net:
+    internal: true
+  observability-docker-net:
+    internal: true
+  observability-net:
+    internal: true
+  data-net:
+    internal: true
+  ai-net:
+    internal: true
 
 volumes:
   pgdata:
   prometheus-data:
   grafana-data:
   loki-data:
+  alloy-data:
   ollama-data:
-  waf-deny:   # liste d'IP bloquées : écrite par remediation, lue par waf (B : à brancher dans la conf nginx)
+  waf-deny:
 
 services:
-  # ───────────────────────── Entrée / WAF ─────────────────────────
   waf:
-    image: owasp/modsecurity-crs:nginx-alpine   # B : épingler une version précise
+    image: owasp/modsecurity-crs:nginx-alpine
     environment:
       BACKEND: http://front:3000
       PORT: "8080"
       MODSEC_RULE_ENGINE: "On"
       PARANOIA: "1"
-    ports:
-      - "80:8080"          # seul point d'entrée accessible depuis le hotspot
+      ANOMALY_INBOUND: "5"
+      ANOMALY_OUTBOUND: "4"
+    ports: ["80:8080"]
     volumes:
       - waf-deny:/etc/waf-deny:ro
-    depends_on: [front]
+    depends_on:
+      front: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
     logging: *logging
     restart: unless-stopped
-    networks: [resilience-net]
+    networks: [edge-net, app-net]
 
-  # ───────────────────────── Application (A) ─────────────────────────
-  front:                       # A : le front sert l'UI et proxifie /api -> api-paiement, /auth -> auth
-    <<: *hardened
+  front:
+    <<: *app-base
     build: ./services/front
-    environment: { SERVICE: front, PORT: "3000" }
-    depends_on: [api-paiement, auth]
+    environment:
+      SERVICE: front
+      PORT: "3000"
+      AUTH_URL: http://auth:4001
+      API_URL: http://api-paiement:4000
+    depends_on:
+      auth: { condition: service_healthy }
+      api-paiement: { condition: service_healthy }
+    networks: [app-net, observability-net]
 
   auth:
-    <<: *hardened
+    <<: *app-base
     build: ./services/auth
     environment:
       SERVICE: auth
       PORT: "4001"
-      JWT_SECRET: ${JWT_SECRET:?définir JWT_SECRET dans .env}
+      JWT_SECRET: ${JWT_SECRET:?definir JWT_SECRET dans .env}
       POSTGRES_HOST: postgres
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?definir POSTGRES_DB dans .env}
+      POSTGRES_USER: ${POSTGRES_USER:?definir POSTGRES_USER dans .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?definir POSTGRES_PASSWORD dans .env}
     depends_on:
       postgres: { condition: service_healthy }
+    networks: [app-net, data-net, observability-net]
 
   api-paiement:
-    <<: *hardened
+    <<: *app-base
     build: ./services/api-paiement
     environment:
       SERVICE: api-paiement
       PORT: "4000"
       AUTH_URL: http://auth:4001
-      JWT_SECRET: ${JWT_SECRET:?définir JWT_SECRET dans .env}
+      JWT_SECRET: ${JWT_SECRET:?definir JWT_SECRET dans .env}
       POSTGRES_HOST: postgres
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?definir POSTGRES_DB dans .env}
+      POSTGRES_USER: ${POSTGRES_USER:?definir POSTGRES_USER dans .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?definir POSTGRES_PASSWORD dans .env}
     depends_on:
       postgres: { condition: service_healthy }
+    networks: [app-net, data-net, observability-net]
 
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?définir POSTGRES_PASSWORD dans .env}
+      POSTGRES_DB: ${POSTGRES_DB:?definir POSTGRES_DB dans .env}
+      POSTGRES_USER: ${POSTGRES_USER:?definir POSTGRES_USER dans .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?definir POSTGRES_PASSWORD dans .env}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 3s
-      retries: 10
+      retries: 12
     security_opt: ["no-new-privileges:true"]
     logging: *logging
     restart: unless-stopped
-    networks: [resilience-net]
+    networks: [data-net, observability-net]
 
-  # ───────────────────────── Remédiation (A) ─────────────────────────
   remediation:
-    <<: *hardened
+    <<: *app-base
     build: ./services/remediation
     environment:
       SERVICE: remediation
       PORT: "5000"
       DOCKER_HOST: tcp://docker-socket-proxy:2375
+      COMPOSE_PROJECT_NAME: resilience-alpha
       ALLOWED_SERVICES: api-paiement,auth,front
       API_URL: http://api-paiement:4000
       AUTH_URL: http://auth:4001
+      WAF_DENY_FILE: /etc/waf-deny/blocked-ips.conf
     volumes:
-      - waf-deny:/etc/waf-deny          # écriture de la liste d'IP bloquées
-    depends_on: [docker-socket-proxy]
+      - waf-deny:/etc/waf-deny
+    depends_on:
+      docker-socket-proxy: { condition: service_started }
+    networks: [app-net, remediation-docker-net, observability-net]
 
   dashboard:
-    <<: *hardened
+    <<: *app-base
     build: ./services/dashboard
     environment:
       SERVICE: dashboard
       PORT: "8088"
       REMEDIATION_URL: http://remediation:5000
-    ports:
-      - "127.0.0.1:8088:8088"           # local au PC Hôte uniquement
-    depends_on: [remediation]
+    ports: ["127.0.0.1:8088:8088"]
+    depends_on:
+      remediation: { condition: service_healthy }
+    networks: [edge-net, app-net, observability-net]
 
-  # ───────────────────────── IA (C) ─────────────────────────
   detector:
-    <<: *hardened
+    <<: *app-base
     build: ./services/detector
     environment:
       SERVICE: detector
       PORT: "5100"
       PROMETHEUS_URL: http://prometheus:9090
       REMEDIATION_URL: http://remediation:5000
-    depends_on: [prometheus]
+    depends_on:
+      prometheus: { condition: service_healthy }
+    networks: [app-net, observability-net]
 
   rag:
-    <<: *hardened
+    <<: *app-base
     build: ./services/rag
     environment:
       SERVICE: rag
@@ -150,99 +179,132 @@ services:
       OLLAMA_URL: http://ollama:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
     volumes:
-      - ./docs:/docs:ro                 # lecture seule : base documentaire du RAG
+      - ./docs:/docs:ro
+    networks: [ai-net, observability-net]
 
   ollama:
-    image: ollama/ollama:latest         # C : épingler une version précise
-    profiles: ["llm"]                   # lourd en RAM : docker compose --profile llm up -d
+    image: ollama/ollama:0.12.3
+    profiles: ["llm"]
     volumes:
       - ollama-data:/root/.ollama
     logging: *logging
     restart: unless-stopped
-    networks: [resilience-net]
+    networks: [ai-net]
 
-  # ───────────────────────── Observabilité (B) ─────────────────────────
   prometheus:
     image: prom/prometheus:v2.54.1
     command:
       - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=2d
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9090/-/ready >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
     logging: *logging
     restart: unless-stopped
-    networks: [resilience-net]
+    networks: [observability-net]
 
   grafana:
     image: grafana/grafana:11.2.0
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?définir GRAFANA_ADMIN_PASSWORD dans .env}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?definir GRAFANA_ADMIN_PASSWORD dans .env}
       GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
     volumes:
       - grafana-data:/var/lib/grafana
       - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
-    ports:
-      - "127.0.0.1:3001:3000"           # local au PC Hôte uniquement
-    depends_on: [prometheus, loki]
+    ports: ["127.0.0.1:3001:3000"]
+    depends_on:
+      prometheus: { condition: service_healthy }
+      loki: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
     logging: *logging
     restart: unless-stopped
-    networks: [resilience-net]
+    networks: [edge-net, observability-net]
 
   loki:
     image: grafana/loki:3.1.1
-    command: -config.file=/etc/loki/loki-config.yml
+    command: ["-config.file=/etc/loki/loki-config.yml"]
     volumes:
       - ./infra/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
       - loki-data:/loki
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3100/ready >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
     logging: *logging
     restart: unless-stopped
-    networks: [resilience-net]
+    networks: [observability-net]
 
-  promtail:
-    image: grafana/promtail:3.1.1
-    command: -config.file=/etc/promtail/promtail-config.yml
+  alloy:
+    image: grafana/alloy:v1.20.1
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
     volumes:
-      - ./infra/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
-    depends_on: [loki, docker-proxy-ro]
+      - ./infra/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy/data
+    depends_on:
+      loki: { condition: service_healthy }
+      docker-proxy-ro: { condition: service_started }
+    security_opt: ["no-new-privileges:true"]
     logging: *logging
     restart: unless-stopped
-    networks: [resilience-net]
+    networks: [observability-net, observability-docker-net]
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
-    # Sous Docker Desktop/WSL2, si les noms de conteneurs n'apparaissent pas, ajouter : privileged: true (à documenter)
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
       - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
+      - /var/lib/docker:/var/lib/docker:ro
+    security_opt: ["no-new-privileges:true"]
     logging: *logging
     restart: unless-stopped
-    networks: [resilience-net]
+    networks: [observability-net]
 
-  # ───────────────────────── Accès Docker restreint ─────────────────────────
-  # Seul `remediation` peut lister + redémarrer des conteneurs.
   docker-socket-proxy:
     image: tecnativa/docker-socket-proxy:0.3.0
     environment:
       CONTAINERS: "1"
       ALLOW_RESTARTS: "1"
-      POST: "0"                          # aucune autre action d'écriture
+      POST: "1"
+      LOG_LEVEL: warning
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    tmpfs: [/run, /tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
     logging: *logging
     restart: unless-stopped
-    networks: [resilience-net]
+    networks: [remediation-docker-net]
 
-  # Lecture seule, uniquement pour que promtail découvre les conteneurs et lise leurs logs.
   docker-proxy-ro:
     image: tecnativa/docker-socket-proxy:0.3.0
     environment:
       CONTAINERS: "1"
+      EVENTS: "1"
       POST: "0"
+      LOG_LEVEL: warning
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    tmpfs: [/run, /tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
     logging: *logging
     restart: unless-stopped
-    networks: [resilience-net]
+    networks: [observability-docker-net]

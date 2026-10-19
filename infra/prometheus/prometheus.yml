@@ -5,13 +5,33 @@ global:
 scrape_configs:
   - job_name: prometheus
     static_configs: [{ targets: ["prometheus:9090"] }]
+
+  - job_name: front
+    static_configs: [{ targets: ["front:3000"], labels: { service: front } }]
+
   - job_name: api-paiement
     static_configs: [{ targets: ["api-paiement:4000"], labels: { service: api-paiement } }]
+
   - job_name: auth
     static_configs: [{ targets: ["auth:4001"], labels: { service: auth } }]
+
   - job_name: remediation
     static_configs: [{ targets: ["remediation:5000"], labels: { service: remediation } }]
+
+  - job_name: dashboard
+    static_configs: [{ targets: ["dashboard:8088"], labels: { service: dashboard } }]
+
   - job_name: detector
     static_configs: [{ targets: ["detector:5100"], labels: { service: detector } }]
+
+  - job_name: rag
+    static_configs: [{ targets: ["rag:5200"], labels: { service: rag } }]
+
   - job_name: cadvisor
-    static_configs: [{ targets: ["cadvisor:8080"] }]
+    static_configs: [{ targets: ["cadvisor:8080"], labels: { service: cadvisor } }]
+
+  - job_name: loki
+    static_configs: [{ targets: ["loki:3100"], labels: { service: loki } }]
+
+  - job_name: alloy
+    static_configs: [{ targets: ["alloy:12345"], labels: { service: alloy } }]

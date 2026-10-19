@@ -298,6 +298,7 @@ services:
     environment:
       CONTAINERS: "1"
       EVENTS: "1"
+      NETWORKS: "1"
       POST: "0"
       LOG_LEVEL: warning
     volumes:

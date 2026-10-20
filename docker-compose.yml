@@ -9,10 +9,16 @@ x-logging: &logging
     max-size: "10m"
     max-file: "3"
 
+x-runtime-guardrails: &runtime-guardrails
+  mem_limit: 512m
+  cpus: "1.0"
+  pids_limit: 200
+  security_opt: ["no-new-privileges:true"]
+
 x-app-base: &app-base
+  <<: *runtime-guardrails
   read_only: true
   cap_drop: [ALL]
-  security_opt: ["no-new-privileges:true"]
   tmpfs: ["/tmp:size=64m,mode=1777"]
   logging: *logging
   restart: unless-stopped
@@ -43,6 +49,7 @@ volumes:
 
 services:
   waf:
+    <<: *runtime-guardrails
     image: owasp/modsecurity-crs:nginx-alpine
     environment:
       BACKEND: http://front:3000
@@ -124,6 +131,7 @@ services:
     networks: [app-net, data-net, observability-net]
 
   postgres:
+    <<: *runtime-guardrails
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?definir POSTGRES_DB dans .env}
@@ -197,8 +205,12 @@ services:
     networks: [ai-net, observability-net]
 
   ollama:
+    <<: *runtime-guardrails
     image: ollama/ollama:0.12.3
     profiles: ["llm"]
+    mem_limit: 4g
+    cpus: "4.0"
+    pids_limit: 512
     volumes:
       - ollama-data:/root/.ollama
     logging: *logging
@@ -206,6 +218,7 @@ services:
     networks: [ai-net]
 
   prometheus:
+    <<: *runtime-guardrails
     image: prom/prometheus:v2.54.1
     command:
       - --config.file=/etc/prometheus/prometheus.yml
@@ -224,6 +237,7 @@ services:
     networks: [observability-net]
 
   grafana:
+    <<: *runtime-guardrails
     image: grafana/grafana:11.2.0
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
@@ -247,6 +261,7 @@ services:
     networks: [edge-net, observability-net]
 
   loki:
+    <<: *runtime-guardrails
     image: grafana/loki:3.1.1
     command: ["-config.file=/etc/loki/loki-config.yml"]
     volumes:
@@ -262,6 +277,7 @@ services:
     networks: [observability-net]
 
   alloy:
+    <<: *runtime-guardrails
     image: grafana/alloy:v1.20.1
     command:
       - run
@@ -280,6 +296,7 @@ services:
     networks: [observability-net, observability-docker-net]
 
   cadvisor:
+    <<: *runtime-guardrails
     image: gcr.io/cadvisor/cadvisor:v0.49.1
     volumes:
       - /:/rootfs:ro
@@ -292,7 +309,11 @@ services:
     networks: [observability-net]
 
   docker-socket-proxy:
+    <<: *runtime-guardrails
     image: tecnativa/docker-socket-proxy:0.3.0
+    mem_limit: 128m
+    cpus: "0.25"
+    pids_limit: 50
     environment:
       CONTAINERS: "1"
       ALLOW_RESTARTS: "1"
@@ -308,7 +329,11 @@ services:
     networks: [remediation-docker-net]
 
   docker-proxy-ro:
+    <<: *runtime-guardrails
     image: tecnativa/docker-socket-proxy:0.3.0
+    mem_limit: 128m
+    cpus: "0.25"
+    pids_limit: 50
     environment:
       CONTAINERS: "1"
       EVENTS: "1"

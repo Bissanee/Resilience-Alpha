@@ -173,6 +173,18 @@ wsl bash -lc "cd '/mnt/c/Users/Lion/Documents/Resilience alpha/Resilience-Alpha'
 
 La procédure distante et les prérequis sont documentés dans `infra/ansible/README.md`.
 
+## Durcissement des conteneurs
+
+Les services disposent de limites CPU, mémoire et nombre de processus. Les services applicatifs s'exécutent avec un utilisateur non-root, un système de fichiers en lecture seule, sans capacité Linux et avec `no-new-privileges`.
+
+Le contrôle automatisé s'exécute avec :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tests\container-hardening.ps1
+```
+
+Les protections, la segmentation réseau et les exceptions nécessaires aux images d'infrastructure sont détaillées dans `docs/securite-conteneurs.md`.
+
 ## Arrêt
 
 ```powershell

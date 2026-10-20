@@ -55,6 +55,51 @@ Consulter les erreurs récentes :
 docker compose logs --since=5m | Select-String -Pattern "error|fatal|panic|denied|unhealthy" -CaseSensitive:$false
 ```
 
+## Pare-feu applicatif
+
+Le service `waf` constitue l’unique point d’entrée public de l’application sur le port HTTP 80. Il combine Nginx, ModSecurity et les règles OWASP Core Rule Set.
+
+Son rôle est de :
+
+- transmettre les requêtes légitimes aux services internes ;
+- bloquer les attaques web courantes, notamment les injections SQL et XSS ;
+- limiter le débit des requêtes sensibles ;
+- produire des journaux JSON exploitables par Grafana Alloy et Loki ;
+- appliquer la liste d’adresses IP bloquées produite par le service de remédiation.
+
+Les routes exposées sont :
+
+| Route publique | Service interne |
+|---|---|
+| `/` et `/health` | `front:3000` |
+| `/auth/*` | `auth:4001` |
+| `/api/*` | `api-paiement:4000` |
+
+Les services applicatifs ne publient aucun port directement sur la machine hôte. Ils sont uniquement accessibles au WAF à travers le réseau Docker interne `app-net`.
+
+### Test automatisé du WAF
+
+Depuis la racine du dépôt :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tests\waf-smoke.ps1
+```
+
+Le script vérifie :
+
+- l’état de santé de l’application à travers le WAF ;
+- le routage vers les services Auth et API Paiement ;
+- le blocage d’une tentative XSS ;
+- le blocage d’une tentative d’injection SQL.
+
+Les requêtes normales doivent répondre avec le statut HTTP `200`. Les charges malveillantes doivent être interrompues avec le statut HTTP `403`.
+
+Les événements correspondants sont consultables avec :
+
+```powershell
+docker compose logs --since=2m waf
+```
+
 ## Observabilité
 
 Prometheus collecte les métriques applicatives et les métriques des conteneurs fournies par cAdvisor. Grafana provisionne automatiquement Prometheus, Loki et le dashboard `Resilience Alpha - Overview`.

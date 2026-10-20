@@ -1,0 +1,19 @@
+log_format resilience_json escape=json
+  '{'
+    '"ts":"$time_iso8601",'
+    '"level":"info",'
+    '"service":"waf",'
+    '"event":"http_access",'
+    '"request_id":"$request_id",'
+    '"source_ip":"$remote_addr",'
+    '"method":"$request_method",'
+    '"uri":"$request_uri",'
+    '"status":$status,'
+    '"bytes":$body_bytes_sent,'
+    '"request_time":$request_time,'
+    '"upstream_time":"$upstream_response_time",'
+    '"user_agent":"$http_user_agent"'
+  '}';
+
+access_log /dev/stdout resilience_json;
+error_log /dev/stderr warn;

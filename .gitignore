@@ -6,6 +6,6 @@ __pycache__/
 *.py[cod]
 node_modules/
 *.zip
-# Fichiers temporaires déchiffrés par SOPS
 secrets/*.dec.env
 secrets/*.plain.env
+infra/ansible/inventories/remote.ini

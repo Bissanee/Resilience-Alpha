@@ -161,6 +161,18 @@ powershell -ExecutionPolicy Bypass -File .\scripts\encrypt-secrets.ps1
 
 La procédure complète d’installation, d’ajout d’un membre et de rotation des clés est décrite dans `secrets/README.md`.
 
+## Déploiement Ansible
+
+Le déploiement local ou distant est automatisé avec Ansible. Le playbook valide Docker Compose, démarre la stack, attend les services et contrôle le WAF, le dashboard et Grafana.
+
+Exécution locale depuis WSL :
+
+```powershell
+wsl bash -lc "cd '/mnt/c/Users/Lion/Documents/Resilience alpha/Resilience-Alpha' && ansible-playbook -i infra/ansible/inventories/local.ini infra/ansible/playbooks/deploy.yml"
+```
+
+La procédure distante et les prérequis sont documentés dans `infra/ansible/README.md`.
+
 ## Arrêt
 
 ```powershell

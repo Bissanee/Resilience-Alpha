@@ -1,0 +1,145 @@
+---
+- name: Deployer Resilience Alpha
+  hosts: deployment
+  gather_facts: true
+
+  vars:
+    resilience_project_dir: >-
+      {{
+        deployment_project_dir
+        | default(
+            lookup('env', 'RESILIENCE_PROJECT_DIR')
+            | default(playbook_dir + '/../../..', true),
+            true
+          )
+      }}
+
+  tasks:
+    - name: Afficher la cible de deploiement
+      ansible.builtin.debug:
+        msg:
+          - "Hote : {{ inventory_hostname }}"
+          - "Systeme : {{ ansible_distribution }} {{ ansible_distribution_version }}"
+          - "Projet : {{ resilience_project_dir }}"
+
+    - name: Verifier que le dossier du projet existe
+      ansible.builtin.stat:
+        path: "{{ resilience_project_dir }}"
+      register: project_directory
+
+    - name: Refuser le deploiement si le projet est absent
+      ansible.builtin.assert:
+        that:
+          - project_directory.stat.exists
+          - project_directory.stat.isdir
+        fail_msg: "Dossier du projet introuvable : {{ resilience_project_dir }}"
+
+    - name: Verifier la presence du fichier Compose
+      ansible.builtin.stat:
+        path: "{{ resilience_project_dir }}/docker-compose.yml"
+      register: compose_file
+
+    - name: Refuser le deploiement sans Docker Compose
+      ansible.builtin.assert:
+        that:
+          - compose_file.stat.exists
+          - compose_file.stat.isreg
+        fail_msg: "docker-compose.yml est introuvable."
+
+    - name: Verifier la presence du fichier local de secrets
+      ansible.builtin.stat:
+        path: "{{ resilience_project_dir }}/.env"
+      register: environment_file
+      no_log: true
+
+    - name: Refuser le deploiement sans fichier de secrets
+      ansible.builtin.assert:
+        that:
+          - environment_file.stat.exists
+          - environment_file.stat.isreg
+        fail_msg: >-
+          Le fichier .env est absent. Utilisez d'abord
+          scripts/decrypt-secrets.ps1 depuis Windows.
+      no_log: true
+
+    - name: Verifier Docker
+      ansible.builtin.command:
+        cmd: docker info
+      changed_when: false
+      no_log: true
+
+    - name: Verifier Docker Compose
+      ansible.builtin.command:
+        cmd: docker compose version
+      register: compose_version
+      changed_when: false
+
+    - name: Afficher la version de Docker Compose
+      ansible.builtin.debug:
+        var: compose_version.stdout
+
+    - name: Valider la configuration Compose
+      ansible.builtin.command:
+        cmd: docker compose config --quiet
+        chdir: "{{ resilience_project_dir }}"
+      changed_when: false
+      no_log: true
+
+    - name: Construire et demarrer la stack
+      ansible.builtin.command:
+        cmd: docker compose up -d --build --remove-orphans
+        chdir: "{{ resilience_project_dir }}"
+      register: compose_up
+      changed_when: >-
+        'Started' in compose_up.stderr
+        or 'Created' in compose_up.stderr
+        or 'Recreated' in compose_up.stderr
+        or 'Building' in compose_up.stderr
+
+    - name: Attendre le point de sante public du WAF
+      ansible.builtin.uri:
+        url: http://127.0.0.1/health
+        method: GET
+        status_code: 200
+        return_content: false
+      register: waf_health
+      retries: 18
+      delay: 5
+      until: waf_health.status == 200
+
+    - name: Attendre le dashboard
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8088/health
+        method: GET
+        status_code: 200
+        return_content: false
+      register: dashboard_health
+      retries: 18
+      delay: 5
+      until: dashboard_health.status == 200
+
+    - name: Attendre Grafana
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3001/api/health
+        method: GET
+        status_code: 200
+        return_content: false
+      register: grafana_health
+      retries: 18
+      delay: 5
+      until: grafana_health.status == 200
+
+    - name: Lire l'etat des services
+      ansible.builtin.command:
+        cmd: docker compose ps
+        chdir: "{{ resilience_project_dir }}"
+      register: compose_status
+      changed_when: false
+
+    - name: Afficher l'etat final
+      ansible.builtin.debug:
+        var: compose_status.stdout_lines
+
+    - name: Confirmer le deploiement
+      ansible.builtin.debug:
+        msg: "Resilience Alpha est deployee et les trois points de sante repondent."

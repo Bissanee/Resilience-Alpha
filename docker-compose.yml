@@ -40,7 +40,6 @@ volumes:
   loki-data:
   alloy-data:
   ollama-data:
-  waf-deny:
 
 services:
   waf:
@@ -52,13 +51,25 @@ services:
       PARANOIA: "1"
       ANOMALY_INBOUND: "5"
       ANOMALY_OUTBOUND: "4"
+      ACCESSLOG: /dev/stdout
+      ERRORLOG: /dev/stderr
+      AUDITLOG: /dev/stdout
+      LOGLEVEL: warn
+      SERVER_TOKENS: "off"
+      SERVER_HEADER: ""
     ports: ["80:8080"]
     volumes:
-      - waf-deny:/etc/waf-deny:ro
+      - ./infra/waf/default.conf.template:/etc/nginx/templates/conf.d/default.conf.template:ro
+      - ./infra/waf/logging.conf.template:/etc/nginx/templates/conf.d/logging.conf.template:ro
+      - ./infra/waf/security-zones.conf.template:/etc/nginx/templates/conf.d/security-zones.conf.template:ro
+      - ./infra/waf/proxy-common.conf.template:/etc/nginx/templates/includes/proxy-common.conf.template:ro
+      - ./infra/waf/blocked-ips.conf:/etc/waf-deny/blocked-ips.conf:ro
     depends_on:
       front: { condition: service_healthy }
+      auth: { condition: service_healthy }
+      api-paiement: { condition: service_healthy }
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- --header='Host: localhost' http://127.0.0.1:8080/health >/dev/null || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 10
@@ -144,7 +155,7 @@ services:
       AUTH_URL: http://auth:4001
       WAF_DENY_FILE: /etc/waf-deny/blocked-ips.conf
     volumes:
-      - waf-deny:/etc/waf-deny
+      - ./infra/waf/blocked-ips.conf:/etc/waf-deny/blocked-ips.conf
     depends_on:
       docker-socket-proxy: { condition: service_started }
     networks: [app-net, remediation-docker-net, observability-net]

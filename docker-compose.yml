@@ -86,6 +86,8 @@ services:
       SERVICE: auth
       PORT: "4001"
       JWT_SECRET: ${JWT_SECRET:?definir JWT_SECRET dans .env}
+      USER_PASSWORD: ${USER_PASSWORD:?definir USER_PASSWORD dans .env}
+      MONITOR_PASSWORD: ${MONITOR_PASSWORD:?definir MONITOR_PASSWORD dans .env}
       POSTGRES_HOST: postgres
       POSTGRES_DB: ${POSTGRES_DB:?definir POSTGRES_DB dans .env}
       POSTGRES_USER: ${POSTGRES_USER:?definir POSTGRES_USER dans .env}
@@ -118,6 +120,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?definir POSTGRES_PASSWORD dans .env}
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./services/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s

@@ -143,6 +143,24 @@ Sous Docker Desktop/WSL2, cAdvisor expose les métriques de ressources sans les 
 
 Les panneaux de débit HTTP et de latence p95 restent vides tant que les stubs ne sont pas remplacés par les services instrumentés définitifs.
 
+## Gestion des secrets
+
+Les variables sensibles peuvent être stockées dans Git sous forme chiffrée avec SOPS et `age`. Le fichier `.env` en clair reste local et ignoré par Git.
+
+Déchiffrement :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\decrypt-secrets.ps1
+```
+
+Mise à jour du fichier chiffré :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\encrypt-secrets.ps1
+```
+
+La procédure complète d’installation, d’ajout d’un membre et de rotation des clés est décrite dans `secrets/README.md`.
+
 ## Arrêt
 
 ```powershell

@@ -100,6 +100,39 @@ Les événements correspondants sont consultables avec :
 docker compose logs --since=2m waf
 ```
 
+## Simulation de flood HTTP
+
+Le script `attack/http-flood.ps1` génère une charge HTTP contrôlée afin de vérifier le rate limiting du WAF et d’alimenter les journaux de sécurité.
+
+Par sécurité, le script impose :
+
+- une cible locale par défaut ;
+- une durée maximale de 120 secondes ;
+- une concurrence maximale de 50 ;
+- un maximum de 10 000 requêtes ;
+- une confirmation manuelle pour toute cible distante.
+
+Exemple local :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\attack\http-flood.ps1 -DurationSeconds 10 -Concurrency 5 -MaxRequests 500 -DelayMilliseconds 100
+```
+
+Le résultat distingue les réponses :
+
+- `200` : requête acceptée et transmise à l’API ;
+- `403` : requête bloquée par ModSecurity ;
+- `429` : requête rejetée par le rate limiting ;
+- erreurs réseau et autres statuts.
+
+Les événements peuvent être recherchés dans Loki avec :
+
+```logql
+{project="resilience-alpha"} |= "Resilience-Alpha-Lab"
+```
+
+Le script ne doit être utilisé que contre les machines explicitement autorisées du laboratoire.
+
 ## Observabilité
 
 Prometheus collecte les métriques applicatives et les métriques des conteneurs fournies par cAdvisor. Grafana provisionne automatiquement Prometheus, Loki et le dashboard `Resilience Alpha - Overview`.

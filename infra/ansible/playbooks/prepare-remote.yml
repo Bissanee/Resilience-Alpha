@@ -1,0 +1,71 @@
+---
+- name: Preparer la machine distante
+  hosts: deployment
+  gather_facts: true
+
+  vars:
+    deployment_repository: https://github.com/Bissanee/Resilience-Alpha.git
+    deployment_version: main
+    deployment_env_source: "{{ playbook_dir }}/../../../.env"
+
+  tasks:
+    - name: Refuser une cible locale pour ce playbook
+      ansible.builtin.assert:
+        that:
+          - ansible_connection | default('ssh') != 'local'
+        fail_msg: "Utilisez deploy.yml avec l'inventaire local.ini pour localhost."
+
+    - name: Verifier que la cible utilise Linux
+      ansible.builtin.assert:
+        that:
+          - ansible_system == "Linux"
+        fail_msg: "Le deploiement distant exige une machine Linux."
+
+    - name: Verifier Git
+      ansible.builtin.command:
+        cmd: git --version
+      changed_when: false
+
+    - name: Verifier Docker
+      ansible.builtin.command:
+        cmd: docker info
+      changed_when: false
+      no_log: true
+
+    - name: Verifier Docker Compose
+      ansible.builtin.command:
+        cmd: docker compose version
+      changed_when: false
+
+    - name: Recuperer ou mettre a jour le depot
+      ansible.builtin.git:
+        repo: "{{ deployment_repository }}"
+        dest: "{{ deployment_project_dir }}"
+        version: "{{ deployment_version }}"
+        update: true
+        force: false
+
+    - name: Verifier la presence du fichier .env sur le controleur
+      ansible.builtin.stat:
+        path: "{{ deployment_env_source }}"
+      delegate_to: localhost
+      register: controller_env
+      no_log: true
+
+    - name: Refuser le deploiement sans secrets locaux
+      ansible.builtin.assert:
+        that:
+          - controller_env.stat.exists
+          - controller_env.stat.isreg
+        fail_msg: "Le fichier .env local est absent. Dechiffrez d'abord les secrets SOPS."
+      no_log: true
+
+    - name: Copier les secrets vers la cible
+      ansible.builtin.copy:
+        src: "{{ deployment_env_source }}"
+        dest: "{{ deployment_project_dir }}/.env"
+        mode: "0600"
+      no_log: true
+
+- name: Executer le deploiement commun
+  ansible.builtin.import_playbook: deploy.yml

@@ -1,0 +1,178 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: resilience-alpha-waf
+    folder: Resilience Alpha - SIEM
+    interval: 10s
+    rules:
+      - uid: waf-rate-limit-burst
+        title: WAF - Rafale de requetes limitees
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: loki
+            relativeTimeRange:
+              from: 120
+              to: 0
+            model:
+              datasource:
+                type: loki
+                uid: loki
+              editorMode: code
+              expr: 'sum(count_over_time({project="resilience-alpha", service="waf"} |= "\"status\":429" [1m]))'
+              intervalMs: 1000
+              maxDataPoints: 43200
+              queryType: range
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            relativeTimeRange:
+              from: 0
+              to: 0
+            model:
+              conditions:
+                - evaluator:
+                    params: [20, 0]
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: B
+              type: classic_conditions
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: Le WAF a limite plus de 20 requetes en une minute.
+          description: Une rafale de reponses HTTP 429 indique un flood ou un client anormalement agressif.
+          runbook: Verifier les journaux WAF dans Loki, identifier la source puis appliquer une remediation controlee.
+        labels:
+          component: waf
+          severity: warning
+          team: resilience-alpha
+
+      - uid: waf-blocked-attacks
+        title: WAF - Multiples attaques bloquees
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: loki
+            relativeTimeRange:
+              from: 360
+              to: 0
+            model:
+              datasource:
+                type: loki
+                uid: loki
+              editorMode: code
+              expr: 'sum(count_over_time({project="resilience-alpha", service="waf"} |= "\"status\":403" [5m]))'
+              intervalMs: 1000
+              maxDataPoints: 43200
+              queryType: range
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            relativeTimeRange:
+              from: 0
+              to: 0
+            model:
+              conditions:
+                - evaluator:
+                    params: [5, 0]
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: B
+              type: classic_conditions
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: Le WAF a bloque plus de 5 requetes suspectes en cinq minutes.
+          description: Plusieurs reponses HTTP 403 peuvent signaler une campagne XSS, SQLi ou une reconnaissance automatisee.
+          runbook: Examiner les evenements ModSecurity et l'adresse source avant toute action de blocage.
+        labels:
+          component: waf
+          severity: critical
+          team: resilience-alpha
+
+      - uid: waf-upstream-errors
+        title: WAF - Erreurs applicatives elevees
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: loki
+            relativeTimeRange:
+              from: 180
+              to: 0
+            model:
+              datasource:
+                type: loki
+                uid: loki
+              editorMode: code
+              expr: 'sum(count_over_time({project="resilience-alpha", service="waf"} |~ "\"status\":5[0-9]{2}" [2m]))'
+              intervalMs: 1000
+              maxDataPoints: 43200
+              queryType: range
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            relativeTimeRange:
+              from: 0
+              to: 0
+            model:
+              conditions:
+                - evaluator:
+                    params: [5, 0]
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: B
+              type: classic_conditions
+        noDataState: OK
+        execErrState: Error
+        for: 30s
+        annotations:
+          summary: Le WAF observe plus de 5 erreurs serveur en deux minutes.
+          description: Une hausse durable des reponses HTTP 5xx peut indiquer une panne ou une degradation applicative.
+          runbook: Controler la sante des services, leurs journaux et les metriques avant un redemarrage cible.
+        labels:
+          component: waf
+          severity: warning
+          team: resilience-alpha

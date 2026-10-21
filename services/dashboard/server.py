@@ -150,7 +150,7 @@ class Handler(BaseHTTPRequestHandler):
     def proxy_events(self):
         try:
             req = urllib.request.Request(REMEDIATION_URL + "/events", headers={"Accept": "text/event-stream"})
-            upstream = urllib.request.urlopen(req, timeout=5)
+            upstream = urllib.request.urlopen(req, timeout=45)
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream; charset=utf-8")
             self.send_header("Cache-Control", "no-cache")

@@ -66,6 +66,7 @@ const incidents = new Map();
 const sseClients = new Set();
 const TERMINAL = new Set(['RESOLVED', 'FAILED', 'ESCALATED']);
 let verifyCounter = 0;
+let latestProbe = { ok: null, detail: 'Aucun paiement de contrôle demandé', ts: null };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const now = () => new Date().toISOString();
@@ -390,6 +391,26 @@ app.post('/incidents', { schema: incidentSchema }, async (req, reply) => {
 
   runIncident(inc); // asynchrone : la réponse n'attend pas la remédiation
   return reply.code(202).send({ incident_id: inc.incident_id, state: inc.state });
+});
+
+app.get('/probe', async (req, reply) => {
+  // Le mot de passe du compte technique reste exclusivement dans le conteneur remediation.
+  try {
+    const result = await verifyOnce(`dashboard-probe-${Date.now()}`);
+    latestProbe = { ...result, ts: now() };
+    return latestProbe;
+  } catch (e) {
+    latestProbe = { ok: false, detail: `probe impossible : ${e.message}`, ts: now() };
+    return reply.code(502).send(latestProbe);
+  }
+});
+
+app.get('/blocked-ips', async () => {
+  let content = '';
+  try { content = await fs.readFile(WAF_DENY_FILE, 'utf8'); }
+  catch (e) { if (e.code !== 'ENOENT') throw e; }
+  const ips = content.split(/\\r?\\n/).map((line) => line.match(/^\\s*deny\\s+([0-9.]+);\\s*$/)?.[1]).filter(Boolean);
+  return { ips, count: ips.length, ts: now() };
 });
 
 app.get('/incidents', async () => {

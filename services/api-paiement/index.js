@@ -182,6 +182,19 @@ app.get('/transactions/:id', { onRequest: requireAuth }, async (req, reply) => {
   }
 });
 
+// Liste des comptes de l'utilisateur connecté (utilisée par le front)
+app.get('/accounts', { onRequest: requireAuth }, async (req, reply) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, balance, currency FROM accounts WHERE owner = $1 ORDER BY id',
+      [req.user.sub],
+    );
+    return rows.map((r) => ({ account: r.id, balance: Number(r.balance), currency: r.currency }));
+  } catch {
+    return reply.code(503).send({ error: 'unavailable' });
+  }
+});
+
 app.get('/accounts/:id/balance', { onRequest: requireAuth }, async (req, reply) => {
   try {
     const { rows } = await pool.query('SELECT id, owner, balance, currency FROM accounts WHERE id = $1', [req.params.id]);

@@ -43,6 +43,7 @@ check "montant négatif" 400 "$(tx "$ALICE" ACC-001 ACC-002 -5 "smoke-$RUN-5")"
 check "paiement monitor" 201 "$(tx "$MON" ACC-MON-1 ACC-MON-2 1 "smoke-$RUN-6")"
 
 echo "== Soldes et intégrité"
+check "liste de ses comptes" 200 "$(code "$API_URL/accounts" -H "Authorization: Bearer $ALICE")"
 check "solde de son compte" 200 "$(code "$API_URL/accounts/ACC-001/balance" -H "Authorization: Bearer $ALICE")"
 check "solde du compte d'autrui" 404 "$(code "$API_URL/accounts/ACC-002/balance" -H "Authorization: Bearer $ALICE")"
 INTEG=$(curl -s "$API_URL/integrity" -H "Authorization: Bearer $MON")

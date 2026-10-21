@@ -130,15 +130,6 @@ services:
       postgres: { condition: service_healthy }
     networks: [app-net, data-net, observability-net]
 
-  waf-deny-init:
-    image: busybox:1.36
-    command: ["sh", "-c", "touch /etc/waf-deny/blocked-ips.conf && chown -R 1000:1000 /etc/waf-deny && chmod 755 /etc/waf-deny && chmod 644 /etc/waf-deny/blocked-ips.conf"]
-    volumes:
-      - waf-deny:/etc/waf-deny
-    network_mode: none
-    restart: "no"
-
-
   postgres:
     <<: *runtime-guardrails
     image: postgres:16-alpine
@@ -176,7 +167,6 @@ services:
       - ./infra/waf/deny:/etc/waf-deny:rw
     depends_on:
       docker-socket-proxy: { condition: service_started }
-      waf-deny-init: { condition: service_completed_successfully }
     networks: [app-net, remediation-docker-net, observability-net]
 
   dashboard:

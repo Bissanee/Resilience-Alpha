@@ -83,3 +83,29 @@ bash tests/remediation-test.sh repeat 5
 ```
 
 Pour chaque cycle, consigner l'identifiant d'incident, l'état final, les actions réalisées, le résultat du paiement de contrôle et le temps de reprise. Un test est réussi uniquement si le cycle arrive à un état terminal attendu, que le service est sain et que le paiement de contrôle réussit. Compléter le tableau avec les résultats réellement observés ; ne pas remplacer un échec ou un timeout par une valeur estimée.
+
+## Dashboard, paiement de contrôle et IP bloquées
+
+- Dashboard : `http://127.0.0.1:8088`.
+- Le navigateur appelle uniquement les routes du dashboard : `/api/incidents`, `/api/events`, `/api/probe` et `/api/blocked`. Le backend dashboard relaie les requêtes au moteur sur le réseau Docker interne.
+- `GET /probe` déclenche un paiement de contrôle fictif à la demande ; `GET /probe-status` donne le dernier résultat connu. Le mot de passe du compte de contrôle reste dans le conteneur remediation.
+- `GET /blocked-ips` liste les IP lues depuis la configuration de refus. Vérifier séparément que le WAF a rechargé cette configuration.
+- Le score d'anomalie s'affiche uniquement si le détecteur expose une route de score compatible. Si la tuile affiche « endpoint non exposé », coordonner avec la personne responsable du détecteur ; ne pas interpréter cette absence comme un score nul.
+
+## Scénario de fiabilité
+
+Sur l'environnement local de démonstration uniquement, exécuter `sh tests/remediation-test.sh repeat 5`. Noter les résultats observés, y compris les échecs, les durées et la réussite du paiement de contrôle. Ne pas inventer de résultats. Vérifier ensuite `docker compose ps` et `http://127.0.0.1:8088`.
+
+## Remise à zéro
+
+Attention : `docker compose down -v` supprime les volumes et données de démonstration.
+
+```sh
+docker compose down -v
+# Vider uniquement les IP ajoutées pendant la démonstration dans le fichier WAF réellement monté.
+# Préserver les autres règles et recharger la configuration WAF selon le runbook de l'équipe B.
+docker compose up -d --build
+docker compose ps
+sh tests/smoke-api.sh
+```
+

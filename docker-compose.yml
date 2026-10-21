@@ -186,9 +186,18 @@ services:
       SERVICE: dashboard
       PORT: "8088"
       REMEDIATION_URL: http://remediation:5000
+      API_URL: http://api-paiement:4000
+      AUTH_URL: http://auth:4001
+      FRONT_URL: http://front:3000
+      DETECTOR_URL: http://detector:5100
+      GRAFANA_URL: http://127.0.0.1:3001
     ports: ["127.0.0.1:8088:8088"]
     depends_on:
       remediation: { condition: service_healthy }
+      api-paiement: { condition: service_healthy }
+      auth: { condition: service_healthy }
+      front: { condition: service_healthy }
+      detector: { condition: service_started }
     networks: [edge-net, app-net, observability-net]
 
   detector:

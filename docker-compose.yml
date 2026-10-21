@@ -46,6 +46,7 @@ volumes:
   loki-data:
   alloy-data:
   ollama-data:
+  waf-deny:
 
 services:
   waf:

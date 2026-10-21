@@ -70,7 +70,7 @@ services:
       - ./infra/waf/logging.conf.template:/etc/nginx/templates/conf.d/logging.conf.template:ro
       - ./infra/waf/security-zones.conf.template:/etc/nginx/templates/conf.d/security-zones.conf.template:ro
       - ./infra/waf/proxy-common.conf.template:/etc/nginx/templates/includes/proxy-common.conf.template:ro
-      - ./infra/waf/blocked-ips.conf:/etc/waf-deny/blocked-ips.conf:ro
+      - ./infra/waf/deny/blocked-ips.conf:/etc/waf-deny/blocked-ips.conf:ro
     depends_on:
       front: { condition: service_healthy }
       auth: { condition: service_healthy }
@@ -173,7 +173,7 @@ services:
       WAF_DENY_FILE: /etc/waf-deny/blocked-ips.conf
       MONITOR_PASSWORD: ${MONITOR_PASSWORD:?definir MONITOR_PASSWORD dans .env}
     volumes:
-      - ./infra/waf/blocked-ips.conf:/etc/waf-deny/blocked-ips.conf
+      - ./infra/waf/deny:/etc/waf-deny:rw
     depends_on:
       docker-socket-proxy: { condition: service_started }
       waf-deny-init: { condition: service_completed_successfully }

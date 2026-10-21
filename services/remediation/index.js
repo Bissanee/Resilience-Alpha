@@ -393,6 +393,8 @@ app.post('/incidents', { schema: incidentSchema }, async (req, reply) => {
   return reply.code(202).send({ incident_id: inc.incident_id, state: inc.state });
 });
 
+app.get('/probe-status', async () => latestProbe);
+
 app.get('/probe', async (req, reply) => {
   // Le mot de passe du compte technique reste exclusivement dans le conteneur remediation.
   try {

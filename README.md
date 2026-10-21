@@ -143,6 +143,43 @@ Sous Docker Desktop/WSL2, cAdvisor expose les métriques de ressources sans les 
 
 Les panneaux de débit HTTP et de latence p95 restent vides tant que les stubs ne sont pas remplacés par les services instrumentés définitifs.
 
+### Détection SIEM et alertes
+
+Grafana provisionne automatiquement trois règles fondées sur les journaux Loki du WAF :
+
+- plus de 20 réponses `429` en une minute : rafale de requêtes limitée ;
+- plus de 5 réponses `403` en cinq minutes : attaques répétées bloquées ;
+- plus de 5 réponses `5xx` en deux minutes : dégradation applicative.
+
+Les règles sont versionnées dans `infra/grafana/provisioning/alerting/rules.yml` et évaluées toutes les dix secondes. Elles sont visibles dans **Grafana > Alerting > Alert rules**, dossier `Resilience Alpha - SIEM`.
+
+Le flood contrôlé permet de valider la première règle. Après son exécution, elle doit passer à l'état `Firing` :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\attack\http-flood.ps1 -DurationSeconds 10 -Concurrency 5 -MaxRequests 500 -DelayMilliseconds 100
+```
+
+### Contrôle des proxies Docker
+
+Deux proxies isolent le socket Docker :
+
+- `docker-proxy-ro` permet à Alloy de découvrir les conteneurs, sans opération d'écriture ;
+- `docker-socket-proxy` réserve à la remédiation l'inventaire et le redémarrage, sans accès aux images, volumes ou autres opérations d'administration.
+
+Le contrôle automatisé vérifie les autorisations et les refus attendus :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tests\docker-proxy-smoke.ps1
+```
+
+### Restauration répétée
+
+Le test suivant redémarre uniquement `api-paiement`, attend son retour à travers le WAF et répète l'opération cinq fois. Il mesure le temps de reprise de chaque cycle et échoue au premier retour incomplet :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tests\restoration-cycles.ps1
+```
+
 ## Gestion des secrets
 
 Les variables sensibles peuvent être stockées dans Git sous forme chiffrée avec SOPS et `age`. Le fichier `.env` en clair reste local et ignoré par Git.

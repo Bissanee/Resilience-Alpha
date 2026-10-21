@@ -93,7 +93,7 @@ try{var d=await get('/api/incidents');renderIncidents(Array.isArray(d)?d:(d.inci
 try{var b=await get('/api/blocked');var ips=b.ips||[];$('blocked').innerHTML=ips.length?'<p>'+ips.length+' adresse(s) bloquée(s)</p><div class="scroll"><table><thead><tr><th>Adresse IP</th><th>Décision</th></tr></thead><tbody>'+ips.map(function(ip){return '<tr><td>'+esc(ip)+'</td><td class="badtext">DENY</td></tr>'}).join('')+'</tbody></table></div>':'<div class="empty">Aucune adresse IP bloquée.</div>'}catch(e){$('blocked').textContent='Liste indisponible : '+e.message}
 try{var p=await get('/api/probe/status');if(p.ts&&p.ts!==lastProbeTs){lastProbeTs=p.ts;$('probeState').textContent=p.ok===true?'RÉUSSI':p.ok===false?'ÉCHEC':'Non testé';$('probeState').className='score '+(p.ok===true?'good':p.ok===false?'badtext':'');$('probeDetail').textContent=p.detail||'';$('probeTs').textContent=p.ts||''}}catch(e){}}
 $('probe').addEventListener('click',async function(){var b=$('probe');b.disabled=true;b.textContent='Paiement en cours…';try{var p=await get('/api/probe');lastProbeTs=p.ts;$('probeState').textContent=p.ok?'RÉUSSI':'ÉCHEC';$('probeState').className='score '+(p.ok?'good':'badtext');$('probeDetail').textContent=p.detail||'';$('probeTs').textContent=p.ts||'';await refresh()}catch(e){$('probeState').textContent='ÉCHEC';$('probeDetail').textContent=e.message}finally{b.disabled=false;b.textContent='Lancer un paiement de contrôle'}});
-var events=new EventSource('/api/events');events.onmessage=function(e){try{var d=JSON.parse(e.data);$('events').innerHTML='<p><b>'+esc(d.state||d.event||'Événement')+'</b> · '+esc(d.incident_id||'')+' · '+esc(d.message||d.detail||'')+'</p>'+$('events').innerHTML.replace('Connexion au flux d’événements…','').slice(0,5000);refresh()}catch(_){}};
+var events=new EventSource('/api/events');function handleEvent(e){try{var d=JSON.parse(e.data);$('events').innerHTML='<p><b>'+esc(d.state||d.event||e.type||'Événement')+'</b> · '+esc(d.incident_id||'')+' · '+esc(d.message||d.detail||'')+'</p>'+$('events').innerHTML.replace('Connexion au flux d’événements…','').slice(0,5000);refresh()}catch(_){}}events.onmessage=handleEvent;['state','incident','update','event'].forEach(function(name){events.addEventListener(name,handleEvent)});
 events.onerror=function(){$('events').textContent='Flux temps réel : reconnexion automatique…'};refresh();setInterval(refresh,2000);
 </script></body></html>"""
 
@@ -157,7 +157,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("X-Accel-Buffering", "no")
             self.end_headers()
             while True:
-                chunk = upstream.read(1024)
+                chunk = upstream.read1(1024)
                 if not chunk:
                     break
                 self.wfile.write(chunk)

@@ -226,6 +226,12 @@ powershell -ExecutionPolicy Bypass -File .\tests\person-c-smoke.ps1
 
 Le script contrôle le contrat des endpoints du détecteur, le modèle Isolation Forest, l'index documentaire LangChain et la présence des services dans le dashboard. Il ne remplace pas un essai de charge contrôlé ni la vérification de réception d'une alerte de bout en bout.
 
+Sur macOS/Linux, l'équivalent Python (sans PowerShell) est :
+
+```bash
+python3 tests/person-c-smoke.py
+```
+
 ### Gouvernance et continuité
 
 - [Analyse des risques EBIOS RM](docs/ebios-rm.md)

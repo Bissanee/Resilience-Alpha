@@ -15,6 +15,10 @@ try:
  LANGCHAIN_AVAILABLE=True
 except ImportError:
  LANGCHAIN_AVAILABLE=False; Document=BM25Retriever=RecursiveCharacterTextSplitter=None
+try:
+ from langchain_ollama import ChatOllama
+except ImportError:
+ ChatOllama=None
 
 def log(event,**fields):
  print(json.dumps({"ts":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()),"service":SERVICE,"event":event,**fields},ensure_ascii=False),flush=True)
@@ -61,10 +65,14 @@ def ask_ollama(query,contexts):
  prompt=("Tu es un assistant de cyber-résilience pour un laboratoire académique. Réponds en français uniquement à partir du contexte. "
  "Distingue les faits des recommandations. Si l'information manque, dis-le explicitement. N'invente ni règle réglementaire ni capacité technique.\n\n"
  f"CONTEXTE:\n{context[:12000]}\n\nQUESTION:\n{query}\n\nRÉPONSE:")
- body=json.dumps({"model":OLLAMA_MODEL,"prompt":prompt,"stream":False,"options":{"temperature":.1}}).encode()
- req=urllib.request.Request(OLLAMA_URL+"/api/generate",data=body,headers={"Content-Type":"application/json"},method="POST")
- with urllib.request.urlopen(req,timeout=45) as response: payload=json.loads(response.read(2_000_000).decode())
- answer=payload.get("response","").strip()
+ if ChatOllama is not None:
+  response=ChatOllama(model=OLLAMA_MODEL,base_url=OLLAMA_URL,temperature=0.1).invoke(prompt)
+  answer=response.content.strip() if isinstance(response.content,str) else str(response.content).strip()
+ else:
+  body=json.dumps({"model":OLLAMA_MODEL,"prompt":prompt,"stream":False,"options":{"temperature":.1}}).encode()
+  req=urllib.request.Request(OLLAMA_URL+"/api/generate",data=body,headers={"Content-Type":"application/json"},method="POST")
+  with urllib.request.urlopen(req,timeout=45) as response: payload=json.loads(response.read(2_000_000).decode())
+  answer=payload.get("response","").strip()
  if not answer: raise RuntimeError("Ollama n'a pas retourné de réponse")
  return answer
 def handle_question(query):
@@ -84,7 +92,7 @@ class Handler(BaseHTTPRequestHandler):
   raw=json.dumps(body,ensure_ascii=False).encode(); self.send_response(status); self.send_header("Content-Type","application/json; charset=utf-8"); self.send_header("Content-Length",str(len(raw))); self.end_headers(); self.wfile.write(raw)
  def do_GET(self):
   if self.path=="/health":
-   with lock: body={"status":"ok" if documents else "degraded","service":SERVICE,"indexed_chunks":len(documents),"langchain_available":LANGCHAIN_AVAILABLE,"ollama_configured":bool(OLLAMA_URL),"index_error":last_index_error}
+   with lock: body={"status":"ok" if documents else "degraded","service":SERVICE,"indexed_chunks":len(documents),"langchain_available":LANGCHAIN_AVAILABLE,"langchain_ollama_available":ChatOllama is not None,"ollama_configured":bool(OLLAMA_URL),"index_error":last_index_error}
    self.send_json(200,body)
   elif self.path=="/documents":
    with lock: docs=list(documents)

@@ -10,13 +10,14 @@ SERVICE=os.getenv("SERVICE","detector"); PORT=int(os.getenv("PORT","5100"))
 PROMETHEUS_URL=os.getenv("PROMETHEUS_URL","http://prometheus:9090").rstrip("/")
 REMEDIATION_URL=os.getenv("REMEDIATION_URL","http://remediation:5000").rstrip("/")
 REMEDIATION_TOKEN=os.getenv("REMEDIATION_TOKEN","")
+LOKI_URL=os.getenv("LOKI_URL","http://loki:3100").rstrip("/")
 INTERVAL=max(5,int(os.getenv("DETECTOR_INTERVAL_SECONDS","10")))
 MIN_SAMPLES=max(20,int(os.getenv("MIN_TRAINING_SAMPLES","30")))
 ALERT_THRESHOLD=min(.99,max(.5,float(os.getenv("DETECTOR_ALERT_THRESHOLD",".78"))))
 COOLDOWN=max(30,int(os.getenv("DETECTOR_ALERT_COOLDOWN_SECONDS","120")))
-FEATURES=("request_rate","error_rate","auth_fail_rate","api_p95","auth_p95")
+FEATURES=("request_rate","error_rate","auth_fail_rate","api_p95","auth_p95","cpu_rate","distinct_source_ips","waf_suspicious_rate")
 lock=threading.RLock(); history=deque(maxlen=600); model=None
-latest={"status":"warming_up","score":0.0,"label":"baseline en cours","features":{k:0.0 for k in FEATURES},"samples":0,"model_ready":False,"last_update":None,"last_alert":None}
+latest={"status":"warming_up","score":0.0,"label":"baseline en cours","features":{k:0.0 for k in FEATURES},"samples":0,"model_ready":False,"last_update":None,"last_alert":None,"source_ip":None}
 last_alert_at=0.0; last_alert_fingerprint=None
 
 def log(event,**fields):
@@ -33,23 +34,51 @@ def prometheus_query(expr):
   except (KeyError,TypeError,ValueError,IndexError): pass
  return total if math.isfinite(total) else 0.0
 
+def collect_loki_features():
+ now_ns=str(int(time.time()*1_000_000_000))
+ start_ns=str(int((time.time()-60)*1_000_000_000))
+ params=urllib.parse.urlencode({"query":'{project="resilience-alpha", service="waf"}',"start":start_ns,"end":now_ns,"limit":"500","direction":"backward"})
+ req=urllib.request.Request(LOKI_URL+"/loki/api/v1/query_range?"+params,headers={"Accept":"application/json"})
+ try:
+  with urllib.request.urlopen(req,timeout=3) as response: payload=json.loads(response.read(2_000_000).decode())
+  ips={}; suspicious={}; suspicious_count=0
+  for stream in payload.get("data",{}).get("result",[]):
+   for _,line in stream.get("values",[]):
+    try: item=json.loads(line)
+    except (TypeError,ValueError): continue
+    ip=item.get("source_ip")
+    try: status=int(item.get("status",0))
+    except (TypeError,ValueError): status=0
+    if isinstance(ip,str) and len(ip)<=45:
+     ips[ip]=ips.get(ip,0)+1
+     if status in (403,429):
+      suspicious[ip]=suspicious.get(ip,0)+1
+      suspicious_count+=1
+  source_ip=max(suspicious,key=suspicious.get) if suspicious and max(suspicious.values())>=3 else None
+  return {"distinct_source_ips":float(len(ips)),"waf_suspicious_rate":float(suspicious_count)/60.0,"source_ip":source_ip}
+ except (OSError,ValueError,urllib.error.URLError) as exc:
+  log("loki_query_failed",error=str(exc)[:160])
+  return {"distinct_source_ips":0.0,"waf_suspicious_rate":0.0,"source_ip":None}
+
 def collect_features():
  queries={
   "request_rate":'sum(rate(http_requests_total{service=~"api-paiement|auth|front"}[1m]))',
   "error_rate":'sum(rate(http_requests_total{service=~"api-paiement|auth|front",status=~"5.."}[1m]))',
   "auth_fail_rate":'sum(rate(http_requests_total{service="auth",status=~"401|403"}[1m]))',
   "api_p95":'histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{service="api-paiement"}[5m])))',
-  "auth_p95":'histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{service="auth"}[5m])))'}
+  "auth_p95":'histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{service="auth"}[5m])))',
+  "cpu_rate":'sum(rate(container_cpu_usage_seconds_total[1m]))'}
  result={}
  for name,query in queries.items():
   try: result[name]=max(0.0,prometheus_query(query))
   except (OSError,ValueError,RuntimeError,urllib.error.URLError) as exc:
    log("metric_query_failed",metric=name,error=str(exc)[:160]); result[name]=0.0
+ result.update({k:v for k,v in collect_loki_features().items() if k!="source_ip"})
+ result["source_ip"]=collect_loki_features().get("source_ip")
  return result
-
 def classify(features):
  if features["auth_fail_rate"]>=0.5: return "bruteforce","auth"
- if features["request_rate"]>=10 or features["error_rate"]>=2: return "dos","api-paiement"
+ if features["request_rate"]>=10 or features["error_rate"]>=2 or features["waf_suspicious_rate"]>=0.2 or features["cpu_rate"]>=0.8: return "dos","api-paiement"
  return "unknown","api-paiement"
 
 def notify_remediation(kind,service,score,features):
@@ -57,8 +86,8 @@ def notify_remediation(kind,service,score,features):
  now=time.time(); fingerprint=(kind,service)
  if now-last_alert_at<COOLDOWN: return {"sent":False,"reason":"cooldown"}
  payload={"incident_id":"if-"+datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")+"-"+str(int(now*1000)%1000000),
-  "type":kind,"service":service,"score":round(float(score),4),"source_ip":None,
-  "features":{k:round(float(v),6) for k,v in features.items()},"ts":datetime.now(timezone.utc).isoformat()}
+  "type":kind,"service":service,"score":round(float(score),4),"source_ip":features.get("source_ip"),
+  "features":{k:round(float(v),6) for k,v in features.items() if k!="source_ip"},"ts":datetime.now(timezone.utc).isoformat()}
  headers={"Content-Type":"application/json","Accept":"application/json"}
  if REMEDIATION_TOKEN: headers["Authorization"]="Bearer "+REMEDIATION_TOKEN
  req=urllib.request.Request(REMEDIATION_URL+"/incidents",data=json.dumps(payload).encode(),headers=headers,method="POST")
@@ -81,7 +110,7 @@ def evaluate_once():
     model=IsolationForest(n_estimators=150,contamination=.08,random_state=42); model.fit(matrix)
    prediction=int(model.predict(row.reshape(1,-1))[0]); decision=float(model.decision_function(row.reshape(1,-1))[0])
    score=float(np.clip(.5-decision,0.0,1.0))
-   hard_signal=features["auth_fail_rate"]>=.5 or features["request_rate"]>=10 or features["error_rate"]>=2
+   hard_signal=features["auth_fail_rate"]>=.5 or features["request_rate"]>=10 or features["error_rate"]>=2 or features["waf_suspicious_rate"]>=.2 or features["cpu_rate"]>=.8
    is_anomaly=(prediction==-1 and score>=ALERT_THRESHOLD) or hard_signal
    label="anomalie" if is_anomaly else "normal"
   latest={"status":"anomaly" if is_anomaly else ("normal" if ready else "warming_up"),"score":round(score,4),
@@ -90,7 +119,7 @@ def evaluate_once():
  if is_anomaly:
   kind,target=classify(features)
   if kind!="unknown":
-   alert=notify_remediation(kind,target,max(score,ALERT_THRESHOLD),features)
+   alert=notify_remediation(kind,target,score,features)
    with lock: latest["last_alert"]={"type":kind,"service":target,**alert,"ts":datetime.now(timezone.utc).isoformat()}
   log("anomaly_detected",score=round(score,4),type=kind,service=target,features=features)
  return dict(latest)

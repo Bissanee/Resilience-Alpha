@@ -141,7 +141,7 @@ Grafana Alloy découvre les conteneurs via un proxy Docker en lecture seule et t
 
 Sous Docker Desktop/WSL2, cAdvisor expose les métriques de ressources sans les noms ni les labels Docker Compose. Le dashboard affiche donc la consommation cumulée du cgroup Docker. La ventilation par service devra utiliser une source de métadonnées complémentaire ou un environnement Linux natif.
 
-Les panneaux de débit HTTP et de latence p95 restent vides tant que les stubs ne sont pas remplacés par les services instrumentés définitifs.
+Le détecteur consomme les métriques Prometheus et les journaux WAF de Loki. Il publie son score, l'état d'apprentissage et les caractéristiques utilisées ; le tableau de bord lit le score via son endpoint interne.
 
 ### Détection SIEM et alertes
 
@@ -179,6 +179,66 @@ Le test suivant redémarre uniquement `api-paiement`, attend son retour à trave
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tests\restoration-cycles.ps1
 ```
+
+## Détection d'anomalies et assistant documentaire (Personne C)
+
+### Détecteur Isolation Forest
+
+Le service `detector` collecte toutes les 10 secondes des mesures réelles de Prometheus : débit HTTP, erreurs 5xx, échecs d'authentification, latence p95 et CPU des conteneurs. Il interroge aussi Loki pour estimer le nombre d'IP distinctes et les réponses WAF 403/429. L'Isolation Forest est réentraîné périodiquement sur un historique glissant.
+
+- `GET /health` : disponibilité et état d'apprentissage ;
+- `GET /score` : score, statut, caractéristiques, IP source éventuelle et dernière alerte ;
+- `GET /model` : nom du modèle, taille de l'historique et nombre minimum d'échantillons ;
+- `GET /metrics` : métriques Prometheus `resilience_detector_*`.
+
+Au démarrage, le détecteur reste en état `warming_up` jusqu'à disposer d'au moins 30 observations. Les seuils opérationnels complètent le modèle pour les rafales d'authentification, le débit et les réponses WAF suspectes. Les alertes sont envoyées à `remediation:5000/incidents` avec un délai anti-répétition. Une IP n'est transmise que si elle est extraite des journaux WAF et validée comme IPv4 ; les métriques agrégées seules ne permettent pas de deviner l'origine d'une attaque.
+
+Pour vérifier le score depuis le réseau Docker :
+
+```powershell
+docker compose exec -T detector python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:5100/score').read().decode())"
+```
+
+### RAG documentaire avec LangChain et Ollama
+
+Le service `rag` indexe en lecture seule les documents textuels présents dans `docs/`, les découpe en passages et recherche les passages pertinents avec BM25 (LangChain). Le dashboard de supervision propose un panneau « Assistant documentaire » qui relaie les questions côté serveur ; le navigateur n'accède pas directement au réseau Docker. Si Ollama est disponible, le service génère une réponse fondée sur ces passages et retourne les sources utilisées. Si Ollama est arrêté ou si le modèle n'est pas téléchargé, le service retourne les extraits retrouvés sans prétendre avoir généré une réponse par LLM.
+
+Démarrer le modèle local (optionnel, ressources importantes) :
+
+```powershell
+docker compose --profile llm up -d ollama
+docker compose exec ollama ollama pull llama3.2:3b
+```
+
+L'API RAG reste **interne au réseau Docker** : `GET /health`, `GET /documents`, `POST /ask` avec un corps JSON `{"query":"Quels sont les principaux scénarios de risque ?"}`, et `POST /reindex`. Le service n'accède ni à PostgreSQL, ni aux secrets, ni au socket Docker.
+
+```powershell
+docker compose exec -T rag python -c "import json,urllib.request; r=urllib.request.Request('http://127.0.0.1:5200/ask',data=json.dumps({'query':'Quels sont les principaux scénarios de risque ?'}).encode(),headers={'Content-Type':'application/json'}); print(urllib.request.urlopen(r).read().decode())"
+```
+
+### Test de la partie C
+
+Après le démarrage de la stack, exécuter depuis PowerShell :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tests\person-c-smoke.ps1
+```
+
+Le script contrôle le contrat des endpoints du détecteur, le modèle Isolation Forest, l'index documentaire LangChain et la présence des services dans le dashboard. Il ne remplace pas un essai de charge contrôlé ni la vérification de réception d'une alerte de bout en bout.
+
+Sur macOS/Linux, l'équivalent Python (sans PowerShell) est :
+
+```bash
+python3 tests/person-c-smoke.py
+```
+
+### Gouvernance et continuité
+
+- [Analyse des risques EBIOS RM](docs/ebios-rm.md)
+- [Plan de continuité et de reprise PCA/PRA](docs/pca-pra.md)
+- [Correspondance pédagogique NIS2 / DORA](docs/nis2-dora.md)
+
+Les niveaux de risque, RTO/RPO et liens réglementaires dans ces documents sont des hypothèses de travail pour le projet académique, pas une attestation de conformité ni des mesures déjà validées. Les preuves de test et les résultats réellement observés doivent être ajoutés au rapport final.
 
 ## Gestion des secrets
 

@@ -37,7 +37,6 @@ networks:
   data-net:
     internal: true
   ai-net:
-    internal: true
 
 volumes:
   pgdata:
@@ -164,6 +163,7 @@ services:
       AUTH_URL: http://auth:4001
       WAF_DENY_FILE: /etc/waf-deny/blocked-ips.conf
       MONITOR_PASSWORD: ${MONITOR_PASSWORD:?definir MONITOR_PASSWORD dans .env}
+      REMEDIATION_TOKEN: ${REMEDIATION_TOKEN:-}
     volumes:
       - ./infra/waf/deny:/etc/waf-deny:rw
     depends_on:
@@ -181,6 +181,7 @@ services:
       AUTH_URL: http://auth:4001
       FRONT_URL: http://front:3000
       DETECTOR_URL: http://detector:5100
+      RAG_URL: http://rag:5200
       GRAFANA_URL: http://127.0.0.1:3001
     ports: ["127.0.0.1:8088:8088"]
     depends_on:
@@ -199,6 +200,12 @@ services:
       PORT: "5100"
       PROMETHEUS_URL: http://prometheus:9090
       REMEDIATION_URL: http://remediation:5000
+      REMEDIATION_TOKEN: ${REMEDIATION_TOKEN:-}
+      LOKI_URL: http://loki:3100
+      DETECTOR_INTERVAL_SECONDS: ${DETECTOR_INTERVAL_SECONDS:-10}
+      MIN_TRAINING_SAMPLES: ${MIN_TRAINING_SAMPLES:-30}
+      DETECTOR_ALERT_THRESHOLD: ${DETECTOR_ALERT_THRESHOLD:-0.78}
+      DETECTOR_ALERT_COOLDOWN_SECONDS: ${DETECTOR_ALERT_COOLDOWN_SECONDS:-120}
     depends_on:
       prometheus: { condition: service_healthy }
     networks: [app-net, observability-net]
@@ -211,10 +218,13 @@ services:
       PORT: "5200"
       OLLAMA_URL: http://ollama:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
+      RAG_DOCS_DIR: /docs
+      RAG_TOP_K: ${RAG_TOP_K:-4}
     volumes:
       - ./docs:/docs:ro
     networks: [ai-net, observability-net]
 
+  
   ollama:
     <<: *runtime-guardrails
     image: ollama/ollama:0.12.3
@@ -226,7 +236,10 @@ services:
       - ollama-data:/root/.ollama
     logging: *logging
     restart: unless-stopped
-    networks: [ai-net]
+    networks:
+      ai-net:
+        aliases:
+          - ollama
 
   prometheus:
     <<: *runtime-guardrails

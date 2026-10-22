@@ -1,0 +1,43 @@
+name: Validate Person C services
+
+on:
+  pull_request:
+    paths:
+      - "services/detector/**"
+      - "services/rag/**"
+      - "services/dashboard/server.py"
+      - "docker-compose.yml"
+      - "tests/person-c-smoke.py"
+      - ".github/workflows/person-c-validation.yml"
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check Python syntax
+        run: |
+          python -m py_compile services/detector/server.py
+          python -m py_compile services/rag/server.py
+          python -m py_compile services/dashboard/server.py
+          python -m py_compile tests/person-c-smoke.py
+
+      - name: Validate Compose configuration
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
+
+      - name: Build detector, RAG and supervision dashboard
+        run: docker compose build detector rag dashboard

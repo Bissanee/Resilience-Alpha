@@ -119,7 +119,7 @@ def evaluate_once():
  with lock:
   history.append(row); ready=len(history)>=MIN_SAMPLES; score=0.0; is_anomaly=False; label="baseline en cours"
   if ready:
-   matrix=np.asarray(history,dtype=float)
+   matrix=np.asarray(list(history)[:-1],dtype=float)
    if model is None or len(history)%10==0:
     model=IsolationForest(n_estimators=150,contamination=.08,random_state=42); model.fit(matrix)
    prediction=int(model.predict(row.reshape(1,-1))[0]); decision=float(model.decision_function(row.reshape(1,-1))[0])

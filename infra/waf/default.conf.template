@@ -35,7 +35,10 @@ server {
         include includes/proxy-common.conf;
     }
 
+    # Protection de base du front contre les rafales de requêtes.
     location / {
+        limit_req zone=web_rate burst=60 nodelay;
+        limit_req_status 429;
         proxy_pass http://front:3000;
         include includes/proxy-common.conf;
     }

@@ -6,6 +6,9 @@ on:
       - "services/detector/**"
       - "services/rag/**"
       - "services/dashboard/server.py"
+      - "services/remediation/**"
+      - "infra/waf/**"
+      - "tests/waf-remediation-smoke.py"
       - "docker-compose.yml"
       - "tests/person-c-smoke.py"
       - ".github/workflows/person-c-validation.yml"
@@ -33,11 +36,18 @@ jobs:
           python -m py_compile services/rag/server.py
           python -m py_compile services/dashboard/server.py
           python -m py_compile tests/person-c-smoke.py
+          node --check services/remediation/index.js
+
+      - name: Run WAF remediation regression tests
+        run: python tests/waf-remediation-smoke.py
 
       - name: Validate Compose configuration
         run: |
           cp .env.example .env
           docker compose config --quiet
 
-      - name: Build detector, RAG and supervision dashboard
-        run: docker compose build detector rag dashboard
+      - name: Build application and remediation services
+        run: docker compose build detector rag dashboard remediation
+
+      - name: Validate WAF Nginx configuration
+        run: docker compose run --rm --no-deps waf nginx -t

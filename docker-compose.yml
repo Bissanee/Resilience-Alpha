@@ -158,7 +158,8 @@ services:
       PORT: "5000"
       DOCKER_HOST: tcp://docker-socket-proxy:2375
       COMPOSE_PROJECT_NAME: resilience-alpha
-      ALLOWED_SERVICES: api-paiement,auth,front
+      ALLOWED_SERVICES: api-paiement,auth,front,waf
+      WAF_URL: http://waf:8080
       API_URL: http://api-paiement:4000
       AUTH_URL: http://auth:4001
       WAF_DENY_FILE: /etc/waf-deny/blocked-ips.conf

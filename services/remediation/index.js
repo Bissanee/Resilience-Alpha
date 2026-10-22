@@ -13,11 +13,12 @@ const env = process.env;
 const PORT = Number(env.PORT || 5000);
 const DOCKER_BASE = (env.DOCKER_HOST || 'tcp://docker-socket-proxy:2375').replace(/^tcp:\/\//, 'http://');
 const PROJECT = env.COMPOSE_PROJECT_NAME || 'resilience-alpha';
-const ALLOWED_SERVICES = (env.ALLOWED_SERVICES || 'api-paiement,auth,front').split(',').map((s) => s.trim()).filter(Boolean);
+const ALLOWED_SERVICES = (env.ALLOWED_SERVICES || 'api-paiement,auth,front,waf').split(',').map((s) => s.trim()).filter(Boolean);
 const SERVICE_URLS = {
   'api-paiement': env.API_URL || 'http://api-paiement:4000',
   auth: env.AUTH_URL || 'http://auth:4001',
   front: env.FRONT_URL || 'http://front:3000',
+  waf: env.WAF_URL || 'http://waf:8080',
 };
 const API_URL = SERVICE_URLS['api-paiement'];
 const AUTH_URL = SERVICE_URLS.auth;
@@ -26,8 +27,6 @@ const MONITOR_PASSWORD = env.MONITOR_PASSWORD;
 const VERIFY_ATTEMPTS = Number(env.VERIFY_ATTEMPTS || 10);
 const VERIFY_DELAY_MS = Number(env.VERIFY_DELAY_MS || 2000);
 const COOLDOWN_MS = Number(env.COOLDOWN_MS || 15000);
-const RATE_LIMIT_ENABLED = env.RATE_LIMIT_ENABLED === 'true'; // à activer quand B a branché la limitation côté WAF
-const RATE_LIMIT_FILE = env.RATE_LIMIT_FILE || path.join(path.dirname(WAF_DENY_FILE), 'rate-limit.json');
 const PROTECTED_IPS = (env.PROTECTED_IPS || '127.0.0.1,192.168.137.1').split(',').map((s) => s.trim());
 const REMEDIATION_TOKEN = env.REMEDIATION_TOKEN || ''; // optionnel : si défini, POST /incidents exige ce jeton
 const MAX_INCIDENTS = 200;
@@ -175,16 +174,25 @@ function blockIp(ip) {
     const tmp = `${WAF_DENY_FILE}.${process.pid}.tmp`;
     await fs.writeFile(tmp, lines.join('\n') + '\n', { mode: 0o644 });
     await fs.rename(tmp, WAF_DENY_FILE);
-    return `IP ajoutée à la liste de blocage : ${ip} (le rechargement du WAF est géré côté WAF)`;
+    // Nginx ne relit pas un fichier include à chaud : redémarrer le conteneur WAF
+    // applique effectivement la règle. Le WAF est explicitement dans la liste autorisée.
+    const wafRestart = await restartService('waf');
+    return `IP ajoutée et appliquée par le WAF (${wafRestart}) : ${ip}`;
   };
   denyLock = denyLock.then(run, run);
   return denyLock;
 }
 
 async function applyRateLimit(serviceName) {
-  if (!RATE_LIMIT_ENABLED) return 'ignoré : limitation de débit non branchée côté WAF (RATE_LIMIT_ENABLED=false)';
-  await fs.writeFile(RATE_LIMIT_FILE, JSON.stringify({ service: serviceName, since: now() }) + '\n', { mode: 0o644 });
-  return `indicateur de limitation écrit (${RATE_LIMIT_FILE})`;
+  // La limitation est appliquée par les zones Nginx statiques, pas par un fichier indicateur.
+  const policies = {
+    auth: '10 requêtes/s, burst 20 sur /auth/',
+    'api-paiement': '20 requêtes/s, burst 40 sur /api/',
+    front: '5 requêtes/s, burst 60 sur /',
+  };
+  const policy = policies[serviceName];
+  if (!policy) throw new Error(`aucune politique de limitation définie pour ${serviceName}`);
+  return `limitation Nginx déjà active : ${policy}`;
 }
 
 // ── Vérification métier ──
@@ -411,7 +419,7 @@ app.get('/blocked-ips', async () => {
   let content = '';
   try { content = await fs.readFile(WAF_DENY_FILE, 'utf8'); }
   catch (e) { if (e.code !== 'ENOENT') throw e; }
-  const ips = content.split(/\\r?\\n/).map((line) => line.match(/^\\s*deny\\s+([0-9.]+);\\s*$/)?.[1]).filter(Boolean);
+  const ips = content.split(/\r?\n/).map((line) => line.match(/^\s*deny\s+([0-9.]+);\s*$/)?.[1]).filter(Boolean);
   return { ips, count: ips.length, ts: now() };
 });
 

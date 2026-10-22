@@ -23,7 +23,7 @@ server {
     location /auth/ {
         limit_req zone=auth_rate burst=20 nodelay;
         limit_req_status 429;
-        proxy_pass http://auth:4001/;
+        proxy_pass http://auth:4001;
         include includes/proxy-common.conf;
     }
 

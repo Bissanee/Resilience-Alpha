@@ -164,6 +164,7 @@ services:
       AUTH_URL: http://auth:4001
       WAF_DENY_FILE: /etc/waf-deny/blocked-ips.conf
       MONITOR_PASSWORD: ${MONITOR_PASSWORD:?definir MONITOR_PASSWORD dans .env}
+      REMEDIATION_TOKEN: ${REMEDIATION_TOKEN:-}
     volumes:
       - ./infra/waf/deny:/etc/waf-deny:rw
     depends_on:
@@ -200,6 +201,7 @@ services:
       PROMETHEUS_URL: http://prometheus:9090
       REMEDIATION_URL: http://remediation:5000
       REMEDIATION_TOKEN: ${REMEDIATION_TOKEN:-}
+      LOKI_URL: http://loki:3100
       DETECTOR_INTERVAL_SECONDS: ${DETECTOR_INTERVAL_SECONDS:-10}
       MIN_TRAINING_SAMPLES: ${MIN_TRAINING_SAMPLES:-30}
       DETECTOR_ALERT_THRESHOLD: ${DETECTOR_ALERT_THRESHOLD:-0.78}

@@ -37,7 +37,6 @@ networks:
   data-net:
     internal: true
   ai-net:
-    internal: true
 
 volumes:
   pgdata:
@@ -225,6 +224,7 @@ services:
       - ./docs:/docs:ro
     networks: [ai-net, observability-net]
 
+  
   ollama:
     <<: *runtime-guardrails
     image: ollama/ollama:0.12.3
@@ -236,7 +236,10 @@ services:
       - ollama-data:/root/.ollama
     logging: *logging
     restart: unless-stopped
-    networks: [ai-net]
+    networks:
+      ai-net:
+        aliases:
+          - ollama
 
   prometheus:
     <<: *runtime-guardrails

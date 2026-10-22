@@ -60,21 +60,50 @@ def retrieve(query):
  with lock: current=retriever
  if current is not None: return [{"content":d.page_content,"source":d.metadata.get("source","unknown")} for d in current.invoke(query)]
  return fallback_retrieve(query)
-def ask_ollama(query,contexts):
- context="\n\n".join(f"[Source: {d['source']}]\n{d['content']}" for d in contexts)
- prompt=("Tu es un assistant de cyber-résilience pour un laboratoire académique. Réponds en français uniquement à partir du contexte. "
- "Distingue les faits des recommandations. Si l'information manque, dis-le explicitement. N'invente ni règle réglementaire ni capacité technique.\n\n"
- f"CONTEXTE:\n{context[:12000]}\n\nQUESTION:\n{query}\n\nRÉPONSE:")
- if ChatOllama is not None:
-  response=ChatOllama(model=OLLAMA_MODEL,base_url=OLLAMA_URL,temperature=0.1).invoke(prompt)
-  answer=response.content.strip() if isinstance(response.content,str) else str(response.content).strip()
- else:
-  body=json.dumps({"model":OLLAMA_MODEL,"prompt":prompt,"stream":False,"options":{"temperature":.1}}).encode()
-  req=urllib.request.Request(OLLAMA_URL+"/api/generate",data=body,headers={"Content-Type":"application/json"},method="POST")
-  with urllib.request.urlopen(req,timeout=45) as response: payload=json.loads(response.read(2_000_000).decode())
-  answer=payload.get("response","").strip()
- if not answer: raise RuntimeError("Ollama n'a pas retourné de réponse")
- return answer
+
+def ask_ollama(query, contexts):
+    context = "\n\n".join(
+        f"[Source: {d['source']}]\n{d['content']}"
+        for d in contexts
+    )
+
+    prompt = (
+        "Tu es un assistant de cyber-resilience pour un laboratoire "
+        "academique. Reponds en francais a partir du contexte. "
+        "Si une information manque, dis-le explicitement.\n\n"
+        f"CONTEXTE:\n{context[:4000]}\n\n"
+        f"QUESTION:\n{query}\n\n"
+        "REPONSE:"
+    )
+
+    body = json.dumps({
+        "model": OLLAMA_MODEL,
+        "prompt": prompt,
+        "stream": False,
+        "options": {
+          "temperature": 0.1,
+          "num_ctx": 512,
+          "num_predict": 96
+        }
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        OLLAMA_URL + "/api/generate",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST"
+    )
+
+    with urllib.request.urlopen(req, timeout=180) as response:
+        payload = json.loads(response.read(2_000_000).decode("utf-8"))
+
+    answer = payload.get("response", "").strip()
+
+    if not answer:
+        raise RuntimeError("Ollama n'a pas retourne de reponse")
+
+    return answer
+
 def handle_question(query):
  global request_count,error_count
  query=query.strip()

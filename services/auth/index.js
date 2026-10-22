@@ -71,6 +71,21 @@ app.get('/metrics', async (req, reply) => {
   return register.metrics();
 });
 
+app.get('/auth/health', async (req, reply) => {
+  try {
+    await pool.query('SELECT 1');
+    dbUp.set(1);
+    return { status: 'ok', db: 'ok', ts: new Date().toISOString() };
+  } catch {
+    dbUp.set(0);
+    return reply.code(503).send({
+      status: 'down',
+      db: 'down',
+      ts: new Date().toISOString(),
+    });
+  }
+});
+
 // Hash factice pour égaliser le temps de réponse quand l'utilisateur n'existe pas
 const DUMMY_HASH = bcrypt.hashSync('dummy-password', 10);
 

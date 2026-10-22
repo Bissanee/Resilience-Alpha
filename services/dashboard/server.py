@@ -10,6 +10,7 @@ SERVICE = os.environ.get("SERVICE", "dashboard")
 PORT = int(os.environ.get("PORT", "8088"))
 REMEDIATION_URL = os.environ.get("REMEDIATION_URL", "http://remediation:5000").rstrip("/")
 DETECTOR_URL = os.environ.get("DETECTOR_URL", "http://detector:5100").rstrip("/")
+RAG_URL = os.environ.get("RAG_URL", "http://rag:5200").rstrip("/")
 GRAFANA_URL = os.environ.get("GRAFANA_URL", "http://127.0.0.1:3000")
 TIMEOUT = float(os.environ.get("UPSTREAM_TIMEOUT", "2.5"))
 SERVICE_URLS = {
@@ -18,6 +19,7 @@ SERVICE_URLS = {
     "front": os.environ.get("FRONT_URL", "http://front:3000"),
     "remediation": REMEDIATION_URL,
     "detector": DETECTOR_URL,
+    "rag": RAG_URL,
 }
 
 
@@ -49,7 +51,7 @@ def overview():
         detail = ""
         if isinstance(body, dict):
             detail = body.get("status", body.get("service", body.get("error", "")))
-        services.append({"service": name, "ok": status == 200, "http_status": status, "detail": detail})
+        services.append({"service": name, "ok": status == 200 and detail != "degraded", "http_status": status, "detail": detail})
     anomaly = None
     anomaly_detail = "Endpoint de score non exposé par le détecteur"
     for path in ("/score", "/anomaly", "/metrics/score"):
@@ -78,6 +80,7 @@ HTML = r"""<!doctype html>
 <section class="section split"><div class="panel"><h2>Incidents et remédiation</h2><p>Progression : DETECTED → DECIDED → ACTING → VERIFYING → RESOLVED / FAILED / ESCALATED</p><div id="incidents" class="empty">Chargement des incidents…</div></div>
 <div style="display:grid;gap:14px;align-content:start"><div class="panel"><h2>Paiement de contrôle</h2><div id="probeState" class="score">Non testé</div><p id="probeDetail">Le contrôle est exécuté à la demande ou à la fin d'une remédiation.</p><p id="probeTs"></p></div><div class="panel"><h2>Détecteur d’anomalies</h2><div id="score" class="score">—</div><p id="scoreDetail">En attente du détecteur…</p><p class="muted">Score indisponible si le détecteur n’expose aucun endpoint de score.</p></div></div></section>
 <section class="section panel"><h2>Adresses IP bloquées</h2><p>Liste lue par le proxy du dashboard depuis le moteur de remédiation.</p><div id="blocked" class="empty">Chargement…</div></section>
+<section class="section panel"><h2>Assistant documentaire (RAG)</h2><p>Posez une question sur les procédures et documents du projet. Les sources retrouvées sont affichées avec la réponse.</p><div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0"><textarea id="ragQuery" rows="3" maxlength="2000" placeholder="Ex. : quelles sont les étapes de vérification après une remédiation ?" style="flex:1;min-width:220px;background:#0b1220;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:10px;font:inherit"></textarea><button class="btn" id="ragAsk">Interroger les documents</button></div><div id="ragAnswer" class="empty">L’assistant recherche dans docs/ à la demande.</div></section>
 <section class="section panel"><h2>Événements en temps réel</h2><div id="events" class="empty">Connexion au flux d’événements…</div></section>
 <p class="muted" style="margin-top:18px">Le dashboard ne reçoit aucun secret de compte technique. Les appels internes passent par son serveur proxy.</p></main>
 <script>
@@ -93,6 +96,7 @@ try{var d=await get('/api/incidents');renderIncidents(Array.isArray(d)?d:(d.inci
 try{var b=await get('/api/blocked');var ips=b.ips||[];$('blocked').innerHTML=ips.length?'<p>'+ips.length+' adresse(s) bloquée(s)</p><div class="scroll"><table><thead><tr><th>Adresse IP</th><th>Décision</th></tr></thead><tbody>'+ips.map(function(ip){return '<tr><td>'+esc(ip)+'</td><td class="badtext">DENY</td></tr>'}).join('')+'</tbody></table></div>':'<div class="empty">Aucune adresse IP bloquée.</div>'}catch(e){$('blocked').textContent='Liste indisponible : '+e.message}
 try{var p=await get('/api/probe/status');if(p.ts&&p.ts!==lastProbeTs){lastProbeTs=p.ts;$('probeState').textContent=p.ok===true?'RÉUSSI':p.ok===false?'ÉCHEC':'Non testé';$('probeState').className='score '+(p.ok===true?'good':p.ok===false?'badtext':'');$('probeDetail').textContent=p.detail||'';$('probeTs').textContent=p.ts||''}}catch(e){}}
 $('probe').addEventListener('click',async function(){var b=$('probe');b.disabled=true;b.textContent='Paiement en cours…';try{var p=await get('/api/probe');lastProbeTs=p.ts;$('probeState').textContent=p.ok?'RÉUSSI':'ÉCHEC';$('probeState').className='score '+(p.ok?'good':'badtext');$('probeDetail').textContent=p.detail||'';$('probeTs').textContent=p.ts||'';await refresh()}catch(e){$('probeState').textContent='ÉCHEC';$('probeDetail').textContent=e.message}finally{b.disabled=false;b.textContent='Lancer un paiement de contrôle'}});
+$('ragAsk').addEventListener('click',async function(){var b=$('ragAsk');var q=$('ragQuery').value.trim();if(!q){$('ragAnswer').textContent='Saisissez une question.';return}b.disabled=true;b.textContent='Recherche…';$('ragAnswer').textContent='Recherche des passages et génération de la réponse…';try{var r=await fetch('/api/rag/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q})});var d=await r.json();if(!r.ok)throw Error(d.error||('HTTP '+r.status));var sources=(d.sources||[]).map(function(x){return '<li><b>'+esc(x.path)+'</b><br>'+esc(x.excerpt||'')+'</li>'}).join('');$('ragAnswer').innerHTML='<p class="pill">'+esc(d.mode||'RAG')+' · modèle '+esc(d.model||'non disponible')+'</p><pre style="white-space:pre-wrap;font:inherit;color:var(--text);margin:12px 0">'+esc(d.answer||'Réponse vide')+'</pre>'+(sources?'<h3>Sources retrouvées</h3><ul class="actions">'+sources+'</ul>':'<p>Aucune source documentaire retrouvée.</p>')}catch(e){$('ragAnswer').textContent='Assistant indisponible : '+e.message}finally{b.disabled=false;b.textContent='Interroger les documents'}});
 var events=new EventSource('/api/events');function handleEvent(e){try{var d=JSON.parse(e.data);$('events').innerHTML='<p><b>'+esc(d.state||d.event||e.type||'Événement')+'</b> · '+esc(d.incident_id||'')+' · '+esc(d.message||d.detail||'')+'</p>'+$('events').innerHTML.replace('Connexion au flux d’événements…','').slice(0,5000);refresh()}catch(_){}}events.onmessage=handleEvent;['state','incident','update','event'].forEach(function(name){events.addEventListener(name,handleEvent)});
 events.onerror=function(){$('events').textContent='Flux temps réel : reconnexion automatique…'};refresh();setInterval(refresh,2000);
 </script></body></html>"""
@@ -169,6 +173,36 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(502, {"error": "event_stream_unavailable"})
             except Exception:
                 pass
+
+    def do_POST(self):
+        path = urlparse(self.path).path
+        if path != "/api/rag/ask":
+            self.send_json(404, {"error": "not_found"})
+            return
+        try:
+            size = int(self.headers.get("Content-Length", "0"))
+            if size <= 0 or size > 16384:
+                self.send_json(413, {"error": "invalid_body_size"})
+                return
+            payload = json.loads(self.rfile.read(size).decode("utf-8"))
+            query = payload.get("query") if isinstance(payload, dict) else None
+            if not isinstance(query, str) or not query.strip() or len(query) > 2000:
+                self.send_json(400, {"error": "invalid_query"})
+                return
+            req = urllib.request.Request(RAG_URL + "/ask", data=json.dumps({"query": query}).encode("utf-8"),
+                                         headers={"Content-Type": "application/json", "Accept": "application/json"},
+                                         method="POST")
+            with urllib.request.urlopen(req, timeout=50) as response:
+                body = json.loads(response.read(2_000_000).decode("utf-8"))
+                self.send_json(response.status, body)
+        except urllib.error.HTTPError as exc:
+            try:
+                body = json.loads(exc.read(200_000).decode("utf-8"))
+            except Exception:
+                body = {"error": "rag_upstream_error"}
+            self.send_json(exc.code, body)
+        except (OSError, ValueError, urllib.error.URLError) as exc:
+            self.send_json(502, {"error": "rag_unavailable", "detail": str(exc)[:180]})
 
     def log_message(self, fmt, *args):
         print(json.dumps({"level": "info", "service": SERVICE, "event": "http", "msg": fmt % args}), flush=True)

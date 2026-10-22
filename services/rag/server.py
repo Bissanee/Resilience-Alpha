@@ -83,7 +83,7 @@ def handle_question(query):
  request_count+=1; contexts=retrieve(query)
  if not contexts: return {"answer":"Aucun passage pertinent trouvé dans les documents locaux. Ajoutez les sources dans docs/ puis relancez l'indexation.","mode":"retrieval_only","sources":[],"model":OLLAMA_MODEL}
  try: answer=ask_ollama(query,contexts); mode="langchain-bm25+ollama" if LANGCHAIN_AVAILABLE else "keyword+ollama"
- except (OSError,ValueError,RuntimeError,urllib.error.URLError) as exc:
+ except Exception as exc:
   error_count+=1; answer="Ollama indisponible : aucun texte généré par LLM. Extraits retrouvés :\n\n"+"\n\n".join(f"[{d['source']}]\n{d['content'][:1200]}" for d in contexts)
   mode="retrieval_only"; log("ollama_unavailable",error=str(exc)[:200])
  return {"answer":answer,"mode":mode,"model":OLLAMA_MODEL,"sources":[{"path":d["source"],"excerpt":d["content"][:350]} for d in contexts],"retrieved_chunks":len(contexts)}

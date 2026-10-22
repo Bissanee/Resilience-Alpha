@@ -201,7 +201,7 @@ docker compose exec -T detector python -c "import urllib.request; print(urllib.r
 
 ### RAG documentaire avec LangChain et Ollama
 
-Le service `rag` indexe en lecture seule les documents textuels présents dans `docs/`, les découpe en passages et recherche les passages pertinents avec BM25 (LangChain). Si Ollama est disponible, il génère une réponse fondée sur ces passages et retourne les sources utilisées. Si Ollama est arrêté ou si le modèle n'est pas téléchargé, le service retourne les extraits retrouvés sans prétendre avoir généré une réponse par LLM.
+Le service `rag` indexe en lecture seule les documents textuels présents dans `docs/`, les découpe en passages et recherche les passages pertinents avec BM25 (LangChain). Le dashboard de supervision propose un panneau « Assistant documentaire » qui relaie les questions côté serveur ; le navigateur n'accède pas directement au réseau Docker. Si Ollama est disponible, le service génère une réponse fondée sur ces passages et retourne les sources utilisées. Si Ollama est arrêté ou si le modèle n'est pas téléchargé, le service retourne les extraits retrouvés sans prétendre avoir généré une réponse par LLM.
 
 Démarrer le modèle local (optionnel, ressources importantes) :
 
@@ -215,6 +215,16 @@ L'API RAG reste **interne au réseau Docker** : `GET /health`, `GET /documents`,
 ```powershell
 docker compose exec -T rag python -c "import json,urllib.request; r=urllib.request.Request('http://127.0.0.1:5200/ask',data=json.dumps({'query':'Quels sont les principaux scénarios de risque ?'}).encode(),headers={'Content-Type':'application/json'}); print(urllib.request.urlopen(r).read().decode())"
 ```
+
+### Test de la partie C
+
+Après le démarrage de la stack, exécuter depuis PowerShell :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tests\person-c-smoke.ps1
+```
+
+Le script contrôle le contrat des endpoints du détecteur, le modèle Isolation Forest, l'index documentaire LangChain et la présence des services dans le dashboard. Il ne remplace pas un essai de charge contrôlé ni la vérification de réception d'une alerte de bout en bout.
 
 ### Gouvernance et continuité
 

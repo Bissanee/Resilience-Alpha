@@ -1,3 +1,306 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  color: #172033;
+  background: #f5f7fb;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-optical-sizing: auto;
+  scroll-behavior: smooth;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse at 80% 0%, rgba(129, 140, 248, 0.09), transparent 34%),
+    #f5f7fb;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button,
+a,
+input,
+select {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 3px solid rgba(99, 102, 241, 0.55);
+  outline-offset: 3px;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.app-shell-authenticated {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+}
+
+.app-sidebar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  height: 100vh;
+  min-height: 620px;
+  flex-direction: column;
+  overflow-y: auto;
+  background: #111827;
+  color: white;
+}
+
+.app-main {
+  display: flex;
+  min-width: 0;
+  min-height: 100vh;
+  flex-direction: column;
+}
+
+.app-topbar {
+  position: sticky;
+  z-index: 20;
+  top: 0;
+  display: flex;
+  min-height: 82px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid #e7eaf1;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 1rem clamp(1rem, 3vw, 2.25rem);
+  backdrop-filter: blur(16px);
+}
+
+.app-content {
+  width: 100%;
+  max-width: 1600px;
+  flex: 1;
+  margin-inline: auto;
+  padding: clamp(1rem, 3vw, 2.25rem);
+}
+
+.app-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-top: 1px solid #e7eaf1;
+  padding: 1rem clamp(1rem, 3vw, 2.25rem);
+  color: #94a3b8;
+  font-size: 0.72rem;
+}
+
+.guest-layout {
+  display: grid;
+  min-height: calc(100vh - 170px);
+  grid-template-columns: minmax(0, 1.1fr) minmax(340px, 0.9fr);
+  align-items: center;
+  gap: clamp(1rem, 4vw, 4rem);
+  max-width: 1250px;
+  margin-inline: auto;
+}
+
+.guest-intro {
+  padding: clamp(0.5rem, 3vw, 2.5rem) 0;
+}
+
+.guest-login-panel {
+  min-width: 0;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 2rem;
+  background: rgba(255, 255, 255, 0.65);
+  box-shadow: 0 25px 80px rgba(30, 41, 59, 0.07);
+}
+
+.guest-login-panel form.mx-auto {
+  margin-top: 0;
+  margin-bottom: 0;
+  max-width: none;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: clamp(1.25rem, 3vw, 2rem);
+}
+
+#root h2 {
+  color: #172554;
+  letter-spacing: -0.035em;
+}
+
+#root input,
+#root select {
+  box-sizing: border-box;
+  min-height: 46px;
+  border: 1px solid #dbe2ee;
+  border-radius: 0.8rem;
+  background-color: #f8fafc;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+#root input:focus,
+#root select:focus {
+  border-color: #6366f1;
+  outline: none;
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.13);
+}
+
+#root button[type="submit"] {
+  min-height: 48px;
+  border-radius: 0.85rem;
+  transition: transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
+}
+
+#root button[type="submit"]:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+#root section {
+  scroll-margin-top: 105px;
+}
+
+#root ul li {
+  gap: 1rem;
+}
+
+@media (max-width: 1100px) {
+  .app-shell-authenticated {
+    grid-template-columns: 215px minmax(0, 1fr);
+  }
+
+  .guest-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(310px, 0.9fr);
+    gap: 1.5rem;
+  }
+}
+
+@media (max-width: 800px) {
+  .app-shell-authenticated {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .app-sidebar {
+    position: relative;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .app-sidebar > div:first-child {
+    padding: 1rem 1.25rem;
+  }
+
+  .app-sidebar > div:nth-child(2) {
+    padding: 0.5rem 1rem 1rem;
+  }
+
+  .app-sidebar nav {
+    display: flex;
+    gap: 0.5rem;
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+  }
+
+  .app-sidebar nav a {
+    flex: 0 0 auto;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .app-sidebar nav a > span:first-child {
+    height: 1.75rem;
+    width: 1.75rem;
+  }
+
+  .app-sidebar nav a > span:last-child {
+    display: none;
+  }
+
+  .app-sidebar > div:last-child {
+    display: none;
+  }
+
+  .app-topbar {
+    min-height: 72px;
+  }
+
+  .guest-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2rem;
+  }
+
+  .guest-intro {
+    padding-top: 1rem;
+    padding-bottom: 0;
+  }
+
+  .guest-intro h2 {
+    font-size: clamp(2.25rem, 8vw, 3rem);
+  }
+
+  .guest-login-panel {
+    max-width: 560px;
+    width: 100%;
+    margin-inline: auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-topbar {
+    gap: 0.5rem;
+    padding: 0.85rem;
+  }
+
+  .app-content {
+    padding: 1rem 0.85rem;
+  }
+
+  .app-footer {
+    padding: 1rem;
+  }
+
+  .guest-intro h2 {
+    font-size: 2.35rem;
+  }
+
+  .guest-intro > div:last-child {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .guest-login-panel {
+    border-radius: 1.35rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

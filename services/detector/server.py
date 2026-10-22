@@ -41,7 +41,7 @@ def collect_loki_features():
  req=urllib.request.Request(LOKI_URL+"/loki/api/v1/query_range?"+params,headers={"Accept":"application/json"})
  try:
   with urllib.request.urlopen(req,timeout=3) as response: payload=json.loads(response.read(2_000_000).decode())
-  ips={}; suspicious={}; suspicious_count=0
+  ips={}; suspicious={}; suspicious_count=0; sql_attack_ip=None
   for stream in payload.get("data",{}).get("result",[]):
    for _,line in stream.get("values",[]):
     try: item=json.loads(line)
@@ -61,12 +61,17 @@ def collect_loki_features():
    for _,line in stream.get("values",[]):
     try: item=json.loads(line)
     except (TypeError,ValueError): continue
+    try: status=int(item.get("status",0))
+    except (TypeError,ValueError): status=0
     uri=urllib.parse.unquote(str(item.get("uri",""))).lower()
-    if any(token in uri for token in ("union select","or 1=1","information_schema")):
+    if status in (403,429) and any(token in uri for token in ("union select","or 1=1","information_schema")):
      attack_type="sqli"
+     candidate=item.get("source_ip")
+     if isinstance(candidate,str) and re.fullmatch(r"(?:[0-9]{1,3}\\.){3}[0-9]{1,3}",candidate) and not any(int(part)>255 for part in candidate.split(".")):
+      sql_attack_ip=candidate
      break
    if attack_type=="sqli": break
-  return {"distinct_source_ips":float(len(ips)),"waf_suspicious_rate":float(suspicious_count)/60.0,"source_ip":source_ip,"attack_type":attack_type}
+  return {"distinct_source_ips":float(len(ips)),"waf_suspicious_rate":float(suspicious_count)/60.0,"source_ip":source_ip or sql_attack_ip,"attack_type":attack_type}
  except (OSError,ValueError,urllib.error.URLError) as exc:
   log("loki_query_failed",error=str(exc)[:160])
   return {"distinct_source_ips":0.0,"waf_suspicious_rate":0.0,"source_ip":None}
@@ -125,7 +130,7 @@ def evaluate_once():
    prediction=int(model.predict(row.reshape(1,-1))[0]); raw_score=float(-model.score_samples(row.reshape(1,-1))[0])
    baseline_scores=-model.score_samples(matrix)
    score=float((np.sum(baseline_scores<=raw_score)+1)/(len(baseline_scores)+1))
-   hard_signal=features["auth_fail_rate"]>=.5 or features["request_rate"]>=10 or features["error_rate"]>=2 or features["waf_suspicious_rate"]>=.2
+   hard_signal=features.get("attack_type")=="sqli" or features["auth_fail_rate"]>=.5 or features["request_rate"]>=10 or features["error_rate"]>=2 or features["waf_suspicious_rate"]>=.2
    is_anomaly=(prediction==-1 and score>=ALERT_THRESHOLD) or hard_signal
    label="anomalie" if is_anomaly else "normal"
   latest={"status":"anomaly" if is_anomaly else ("normal" if ready else "warming_up"),"score":round(score,4),

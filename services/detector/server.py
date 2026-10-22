@@ -55,7 +55,7 @@ def collect_loki_features():
       suspicious[ip]=suspicious.get(ip,0)+1
       suspicious_count+=1
   source_ip=max(suspicious,key=suspicious.get) if suspicious and max(suspicious.values())>=3 else None
-  if source_ip and not re.fullmatch(r"(?:[0-9]{1,3}\.){3}[0-9]{1,3}",source_ip): source_ip=None
+  if source_ip and (not re.fullmatch(r"(?:[0-9]{1,3}\.){3}[0-9]{1,3}",source_ip) or any(int(part)>255 for part in source_ip.split("."))): source_ip=None
   attack_type="unknown"
   for stream in payload.get("data",{}).get("result",[]):
    for _,line in stream.get("values",[]):
@@ -125,11 +125,11 @@ def evaluate_once():
    prediction=int(model.predict(row.reshape(1,-1))[0]); raw_score=float(-model.score_samples(row.reshape(1,-1))[0])
    baseline_scores=-model.score_samples(matrix)
    score=float((np.sum(baseline_scores<=raw_score)+1)/(len(baseline_scores)+1))
-   hard_signal=features["auth_fail_rate"]>=.5 or features["request_rate"]>=10 or features["error_rate"]>=2 or features["waf_suspicious_rate"]>=.2 or features["cpu_rate"]>=.8
+   hard_signal=features["auth_fail_rate"]>=.5 or features["request_rate"]>=10 or features["error_rate"]>=2 or features["waf_suspicious_rate"]>=.2
    is_anomaly=(prediction==-1 and score>=ALERT_THRESHOLD) or hard_signal
    label="anomalie" if is_anomaly else "normal"
   latest={"status":"anomaly" if is_anomaly else ("normal" if ready else "warming_up"),"score":round(score,4),
-   "label":label,"features":features,"samples":len(history),"model_ready":ready,
+   "label":label,"samples":len(history),"model_ready":ready,
    "last_update":datetime.now(timezone.utc).isoformat(),"last_alert":latest.get("last_alert"),"source_ip":features.get("source_ip"),"attack_type":features.get("attack_type","unknown"),"features":{k:features[k] for k in FEATURES}}
  if is_anomaly:
   kind,target=classify(features)

@@ -2,3 +2,4 @@
 # Le debit reste volontairement confortable en usage normal et limite un flood simple.
 limit_req_zone $binary_remote_addr zone=auth_rate:10m rate=10r/s;
 limit_req_zone $binary_remote_addr zone=api_rate:10m rate=20r/s;
+limit_req_zone $binary_remote_addr zone=web_rate:10m rate=5r/s;

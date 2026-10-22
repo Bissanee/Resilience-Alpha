@@ -238,3 +238,34 @@ Ne pas utiliser `docker compose down -v` sauf si la suppression des données Pos
 - Le service de remédiation doit vérifier `ALLOWED_SERVICES` avant tout appel Docker.
 
 Le contrat dans `docs/contrat.md` reste la source de vérité pour les ports, APIs, métriques et responsabilités.
+
+## Dashboard de résilience
+
+Ouvrir **http://127.0.0.1:8088** depuis le PC hôte. Le dashboard est servi par le conteneur `dashboard` et son backend relaie les appels internes ; le navigateur n'appelle pas directement `remediation:5000`.
+
+Il affiche l'état HTTP des services `api-paiement`, `auth`, `front`, `remediation` et `detector`, les incidents et leurs actions, les IP remontées par le moteur, le dernier paiement de contrôle, un lien Grafana et le score du détecteur lorsqu'un endpoint de score est disponible. L'actualisation des panneaux se fait toutes les 2 secondes.
+
+### Vérification de la remédiation
+
+Depuis PowerShell, lancer les scénarios prévus par le dépôt :
+
+```powershell
+sh tests/remediation-test.sh fake
+sh tests/remediation-test.sh unknown
+sh tests/remediation-test.sh repeat 5
+```
+
+Le scénario `repeat 5` provoque des interruptions contrôlées de l'API : à exécuter uniquement sur la stack locale de démonstration. Il peut laisser le service arrêté en cas d'interruption du test ; vérifier ensuite `docker compose ps` et relancer `docker compose up -d api-paiement` si nécessaire.
+
+### Remise à zéro de la démo
+
+Attention : la commande suivante supprime les volumes du projet et donc les données persistées de démonstration.
+
+```powershell
+docker compose down -v
+docker compose up -d --build
+docker compose ps
+```
+
+Vérifier ensuite les routes `/health`, `http://127.0.0.1:8088/health` et l'état du WAF. Le fichier de refus WAF doit être vidé uniquement des IP ajoutées pendant la démo, puis la configuration doit être rechargée selon la procédure du service `waf`. Ne pas supprimer les autres règles de sécurité.
+

@@ -46,6 +46,7 @@ volumes:
   loki-data:
   alloy-data:
   ollama-data:
+  waf-deny:
 
 services:
   waf:
@@ -70,7 +71,7 @@ services:
       - ./infra/waf/logging.conf.template:/etc/nginx/templates/conf.d/logging.conf.template:ro
       - ./infra/waf/security-zones.conf.template:/etc/nginx/templates/conf.d/security-zones.conf.template:ro
       - ./infra/waf/proxy-common.conf.template:/etc/nginx/templates/includes/proxy-common.conf.template:ro
-      - ./infra/waf/blocked-ips.conf:/etc/waf-deny/blocked-ips.conf:ro
+      - ./infra/waf/deny/blocked-ips.conf:/etc/waf-deny/blocked-ips.conf:ro
     depends_on:
       front: { condition: service_healthy }
       auth: { condition: service_healthy }
@@ -130,15 +131,6 @@ services:
       postgres: { condition: service_healthy }
     networks: [app-net, data-net, observability-net]
 
-  waf-deny-init:
-    image: busybox:1.36
-    command: ["sh", "-c", "touch /etc/waf-deny/blocked-ips.conf && chown -R 1000:1000 /etc/waf-deny && chmod 755 /etc/waf-deny && chmod 644 /etc/waf-deny/blocked-ips.conf"]
-    volumes:
-      - waf-deny:/etc/waf-deny
-    network_mode: none
-    restart: "no"
-
-
   postgres:
     <<: *runtime-guardrails
     image: postgres:16-alpine
@@ -173,10 +165,9 @@ services:
       WAF_DENY_FILE: /etc/waf-deny/blocked-ips.conf
       MONITOR_PASSWORD: ${MONITOR_PASSWORD:?definir MONITOR_PASSWORD dans .env}
     volumes:
-      - ./infra/waf/blocked-ips.conf:/etc/waf-deny/blocked-ips.conf
+      - ./infra/waf/deny:/etc/waf-deny:rw
     depends_on:
       docker-socket-proxy: { condition: service_started }
-      waf-deny-init: { condition: service_completed_successfully }
     networks: [app-net, remediation-docker-net, observability-net]
 
   dashboard:
@@ -186,9 +177,18 @@ services:
       SERVICE: dashboard
       PORT: "8088"
       REMEDIATION_URL: http://remediation:5000
+      API_URL: http://api-paiement:4000
+      AUTH_URL: http://auth:4001
+      FRONT_URL: http://front:3000
+      DETECTOR_URL: http://detector:5100
+      GRAFANA_URL: http://127.0.0.1:3001
     ports: ["127.0.0.1:8088:8088"]
     depends_on:
       remediation: { condition: service_healthy }
+      api-paiement: { condition: service_healthy }
+      auth: { condition: service_healthy }
+      front: { condition: service_healthy }
+      detector: { condition: service_started }
     networks: [edge-net, app-net, observability-net]
 
   detector:

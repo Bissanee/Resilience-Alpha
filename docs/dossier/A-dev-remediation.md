@@ -102,7 +102,7 @@ Chaque service journalise en **JSON** sur la sortie standard (horodatage, servic
 
 ## 4. Moteur de remédiation
 
-> **[À COMPLÉTER au jour 2, après implémentation. La conception ci-dessous est celle visée ; l'ajuster à ce qui est réellement construit.]**
+> Le moteur reçoit `POST /incidents`, conserve l'état de l'incident et exécute une liste fermée d'actions. Les états exacts et les détails d'action doivent être vérifiés sur les journaux d'exécution avant la soutenance ; les résultats ci-dessous ne sont pas présentés comme validés tant que les essais n'ont pas été exécutés.
 
 ### 4.1 Principe
 
@@ -120,7 +120,7 @@ stateDiagram-v2
   FAILED --> [*]
 ```
 
-Chaque changement d'état est horodaté dans un journal consultable depuis le dashboard.
+Le dashboard servi sur `http://127.0.0.1:8088` interroge le backend de supervision toutes les 2 secondes. Son backend proxy les routes d'incident, de paiement de contrôle et d'IP bloquées ; le navigateur n'accède pas directement au réseau Docker interne. Le dashboard vérifie la santé HTTP de `api-paiement`, `auth`, `front`, `remediation` et `detector`, affiche les incidents et leurs actions, le dernier paiement de contrôle, les IP retournées par le moteur et un lien vers Grafana. Le score du détecteur s'affiche seulement si le service expose une route de score compatible. Les captures avant / pendant / après doivent être ajoutées après une exécution réelle.
 
 ### 4.2 Politique de remédiation
 
@@ -143,7 +143,7 @@ Le moteur de remédiation est le composant le plus sensible, puisqu'il agit sur 
 - **liste blanche** de services redémarrables (`api-paiement`, `auth`, `front`), vérifiée par le moteur lui-même ;
 - liste fermée d'actions ; un incident de type inconnu ne déclenche aucune action automatique ;
 - aucune interface d'administration exposée aux autres composants ;
-- journalisation de chaque action. **[À COMPLÉTER : résultat du test de restriction du proxy, ex. création de conteneur refusée]**
+- journalisation de chaque action. Le résultat doit être documenté à partir de `tests/docker-proxy-smoke.ps1` ; ne pas conclure à la restriction effective sans conserver la sortie du test.
 
 ## 5. Résultats des essais
 
@@ -159,13 +159,24 @@ La coupure volontaire de la base de données fait passer `GET /health` à 503, q
 
 **[À COMPLÉTER : un tableau par scénario, avec plusieurs essais]**
 
-| Essai | Incident provoqué | Service avant | Service pendant | Service après | Temps de reprise | Intervention humaine |
-|---|---|---|---|---|---|---|
-| 1 | | OK | | | | non |
-| 2 | | | | | | |
-| 3 | | | | | | |
+| Essai | Incident provoqué | État final observé | Durée moteur (ms) | Durée totale (s) | Paiement de contrôle | Intervention humaine |
+|---|---|---|---:|---:|---|---|
+| 1 | À relever avec `sh tests/remediation-test.sh repeat 5` | **À exécuter** | — | — | — | — |
+| 2 | idem | **À exécuter** | — | — | — | — |
+| 3 | idem | **À exécuter** | — | — | — | — |
+| 4 | idem | **À exécuter** | — | — | — | — |
+| 5 | idem | **À exécuter** | — | — | — | — |
+
+**Ne pas présenter ces lignes comme des résultats acquis :** remplir les colonnes à partir de la sortie réelle du script et des captures. La commande `sh tests/remediation-test.sh repeat 5` provoque des arrêts contrôlés de `api-paiement` ; elle doit être exécutée uniquement sur la stack de démo.
 
 À joindre : captures du dashboard (avant / pendant / après), extrait du journal de l'incident, cas d'échec observés et corrigés.
+
+### 5.3 Captures à joindre
+
+- Dashboard au repos avec les cinq services opérationnels.
+- Dashboard pendant une attaque, avec l'incident et l'action de blocage visibles.
+- Dashboard après remédiation, avec l'état terminal et le paiement de contrôle réussi.
+- Sortie de `sh tests/remediation-test.sh repeat 5` et `docker compose ps` après les cinq cycles.
 
 ## 6. Limites et améliorations en contexte industriel
 

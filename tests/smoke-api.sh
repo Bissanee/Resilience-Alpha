@@ -1,12 +1,13 @@
 #!/bin/sh
 # Test de fumée de auth + api-paiement. Usage : bash tests/smoke-api.sh
-# Variables : AUTH_URL (défaut http://localhost:4001), API_URL (défaut http://localhost:4000)
+# Variables : AUTH_URL (4001), API_URL (4000), DASHBOARD_URL (8088)
 # Lit USER_PASSWORD et MONITOR_PASSWORD depuis .env.
 set -u
 cd "$(dirname "$0")/.."
 set -a; [ -f .env ] && . ./.env; set +a
 AUTH_URL="${AUTH_URL:-http://localhost:4001}"
 API_URL="${API_URL:-http://localhost:4000}"
+DASHBOARD_URL="${DASHBOARD_URL:-http://localhost:8088}"
 FAIL=0
 RUN="$(date +%s)$$"
 
@@ -19,6 +20,8 @@ token_of() { sed -E 's/.*"token":"([^"]+)".*/\1/'; }
 echo "== Santé"
 check "auth /health" 200 "$(code "$AUTH_URL/health")"
 check "api /health"  200 "$(code "$API_URL/health")"
+check "dashboard /health" 200 "$(code "$DASHBOARD_URL/health")"
+check "dashboard /api/overview" 200 "$(code "$DASHBOARD_URL/api/overview")"
 
 echo "== Authentification"
 check "login invalide" 401 "$(code -X POST "$AUTH_URL/auth/login" -H 'Content-Type: application/json' -d '{"username":"alice","password":"mauvais"}')"

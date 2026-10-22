@@ -182,6 +182,7 @@ services:
       AUTH_URL: http://auth:4001
       FRONT_URL: http://front:3000
       DETECTOR_URL: http://detector:5100
+      RAG_URL: http://rag:5200
       GRAFANA_URL: http://127.0.0.1:3001
     ports: ["127.0.0.1:8088:8088"]
     depends_on:

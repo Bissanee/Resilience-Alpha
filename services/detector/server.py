@@ -1,5 +1,5 @@
 """Détecteur d'anomalies sur les métriques Prometheus, avec Isolation Forest."""
-import json, math, os, re, threading, time, urllib.error, urllib.parse, urllib.request
+import ipaddress, json, math, os, re, threading, time, urllib.error, urllib.parse, urllib.request
 from collections import deque
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -55,7 +55,9 @@ def collect_loki_features():
       suspicious[ip]=suspicious.get(ip,0)+1
       suspicious_count+=1
   source_ip=max(suspicious,key=suspicious.get) if suspicious and max(suspicious.values())>=3 else None
-  if source_ip and (not re.fullmatch(r"(?:[0-9]{1,3}\.){3}[0-9]{1,3}",source_ip) or any(int(part)>255 for part in source_ip.split("."))): source_ip=None
+  if source_ip:
+   try: ipaddress.IPv4Address(source_ip)
+   except ipaddress.AddressValueError: source_ip=None
   attack_type="unknown"
   for stream in payload.get("data",{}).get("result",[]):
    for _,line in stream.get("values",[]):
@@ -67,8 +69,12 @@ def collect_loki_features():
     if status in (403,429) and any(token in uri for token in ("union select","or 1=1","information_schema")):
      attack_type="sqli"
      candidate=item.get("source_ip")
-     if isinstance(candidate,str) and re.fullmatch(r"(?:[0-9]{1,3}\\.){3}[0-9]{1,3}",candidate) and not any(int(part)>255 for part in candidate.split(".")):
-      sql_attack_ip=candidate
+     if isinstance(candidate,str):
+      try:
+       ipaddress.IPv4Address(candidate)
+       sql_attack_ip=candidate
+      except ipaddress.AddressValueError:
+       pass
      break
    if attack_type=="sqli": break
   return {"distinct_source_ips":float(len(ips)),"waf_suspicious_rate":float(suspicious_count)/60.0,"source_ip":source_ip or sql_attack_ip,"attack_type":attack_type}

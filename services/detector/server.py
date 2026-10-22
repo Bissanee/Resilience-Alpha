@@ -135,7 +135,7 @@ def evaluate_once():
     model=IsolationForest(n_estimators=150,contamination=.08,random_state=42); model.fit(matrix)
    prediction=int(model.predict(row.reshape(1,-1))[0]); raw_score=float(-model.score_samples(row.reshape(1,-1))[0])
    baseline_scores=-model.score_samples(matrix)
-   score=float((np.sum(baseline_scores<=raw_score)+1)/(len(baseline_scores)+1))
+   score=float((np.sum(baseline_scores<raw_score)+0.5*np.sum(np.isclose(baseline_scores,raw_score)))/max(1,len(baseline_scores)))
    hard_signal=features.get("attack_type")=="sqli" or features["auth_fail_rate"]>=.5 or features["request_rate"]>=10 or features["error_rate"]>=2 or features["waf_suspicious_rate"]>=.2
    is_anomaly=(prediction==-1 and score>=ALERT_THRESHOLD) or hard_signal
    label="anomalie" if is_anomaly else "normal"

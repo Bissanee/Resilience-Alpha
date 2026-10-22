@@ -55,7 +55,18 @@ def collect_loki_features():
       suspicious[ip]=suspicious.get(ip,0)+1
       suspicious_count+=1
   source_ip=max(suspicious,key=suspicious.get) if suspicious and max(suspicious.values())>=3 else None
-  return {"distinct_source_ips":float(len(ips)),"waf_suspicious_rate":float(suspicious_count)/60.0,"source_ip":source_ip}
+  if source_ip and not re.fullmatch(r"(?:[0-9]{1,3}\\.){3}[0-9]{1,3}",source_ip): source_ip=None
+  attack_type="unknown"
+  for stream in payload.get("data",{}).get("result",[]):
+   for _,line in stream.get("values",[]):
+    try: item=json.loads(line)
+    except (TypeError,ValueError): continue
+    uri=urllib.parse.unquote(str(item.get("uri",""))).lower()
+    if any(token in uri for token in ("<script","union select","or 1=1","information_schema","%3cscript")):
+     attack_type="sqli" if any(token in uri for token in ("union select","or 1=1","information_schema")) else "sqli"
+     break
+   if attack_type=="sqli": break
+  return {"distinct_source_ips":float(len(ips)),"waf_suspicious_rate":float(suspicious_count)/60.0,"source_ip":source_ip,"attack_type":attack_type}
  except (OSError,ValueError,urllib.error.URLError) as exc:
   log("loki_query_failed",error=str(exc)[:160])
   return {"distinct_source_ips":0.0,"waf_suspicious_rate":0.0,"source_ip":None}
@@ -73,10 +84,13 @@ def collect_features():
   try: result[name]=max(0.0,prometheus_query(query))
   except (OSError,ValueError,RuntimeError,urllib.error.URLError) as exc:
    log("metric_query_failed",metric=name,error=str(exc)[:160]); result[name]=0.0
- result.update({k:v for k,v in collect_loki_features().items() if k!="source_ip"})
- result["source_ip"]=collect_loki_features().get("source_ip")
+ loki_features=collect_loki_features()
+ result.update({k:v for k,v in loki_features.items() if k not in ("source_ip","attack_type")})
+ result["source_ip"]=loki_features.get("source_ip")
+ result["attack_type"]=loki_features.get("attack_type","unknown")
  return result
 def classify(features):
+ if features.get("attack_type")=="sqli": return "sqli","api-paiement"
  if features["auth_fail_rate"]>=0.5: return "bruteforce","auth"
  if features["request_rate"]>=10 or features["error_rate"]>=2 or features["waf_suspicious_rate"]>=0.2 or features["cpu_rate"]>=0.8: return "dos","api-paiement"
  return "unknown","api-paiement"
@@ -87,7 +101,7 @@ def notify_remediation(kind,service,score,features):
  if now-last_alert_at<COOLDOWN: return {"sent":False,"reason":"cooldown"}
  payload={"incident_id":"if-"+datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")+"-"+str(int(now*1000)%1000000),
   "type":kind,"service":service,"score":round(float(score),4),"source_ip":features.get("source_ip"),
-  "features":{k:round(float(v),6) for k,v in features.items() if k!="source_ip"},"ts":datetime.now(timezone.utc).isoformat()}
+  "features":{k:round(float(v),6) for k,v in features.items() if k in FEATURES},"ts":datetime.now(timezone.utc).isoformat()}
  headers={"Content-Type":"application/json","Accept":"application/json"}
  if REMEDIATION_TOKEN: headers["Authorization"]="Bearer "+REMEDIATION_TOKEN
  req=urllib.request.Request(REMEDIATION_URL+"/incidents",data=json.dumps(payload).encode(),headers=headers,method="POST")
@@ -115,7 +129,7 @@ def evaluate_once():
    label="anomalie" if is_anomaly else "normal"
   latest={"status":"anomaly" if is_anomaly else ("normal" if ready else "warming_up"),"score":round(score,4),
    "label":label,"features":features,"samples":len(history),"model_ready":ready,
-   "last_update":datetime.now(timezone.utc).isoformat(),"last_alert":latest.get("last_alert")}
+   "last_update":datetime.now(timezone.utc).isoformat(),"last_alert":latest.get("last_alert"),"source_ip":features.get("source_ip"),"attack_type":features.get("attack_type","unknown"),"features":{k:features[k] for k in FEATURES}}
  if is_anomaly:
   kind,target=classify(features)
   if kind!="unknown":
@@ -139,6 +153,7 @@ def metric_text():
   "# HELP resilience_detector_samples Number of retained metric snapshots.","# TYPE resilience_detector_samples gauge",
   f'resilience_detector_samples{{service="{SERVICE}"}} {data.get("samples",0)}']
  for name,value in data.get("features",{}).items():
+  if not isinstance(value,(int,float)): continue
   lines += [f"# HELP resilience_detector_feature_{name} Latest Prometheus-derived feature.",f"# TYPE resilience_detector_feature_{name} gauge",f'resilience_detector_feature_{name}{{service="{SERVICE}"}} {value}']
  return "\n".join(lines)+"\n"
 

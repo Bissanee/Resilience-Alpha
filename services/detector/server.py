@@ -122,8 +122,9 @@ def evaluate_once():
    matrix=np.asarray(list(history)[:-1],dtype=float)
    if model is None or len(history)%10==0:
     model=IsolationForest(n_estimators=150,contamination=.08,random_state=42); model.fit(matrix)
-   prediction=int(model.predict(row.reshape(1,-1))[0]); decision=float(model.decision_function(row.reshape(1,-1))[0])
-   score=float(np.clip(.5-decision,0.0,1.0))
+   prediction=int(model.predict(row.reshape(1,-1))[0]); raw_score=float(-model.score_samples(row.reshape(1,-1))[0])
+   baseline_scores=-model.score_samples(matrix)
+   score=float((np.sum(baseline_scores<=raw_score)+1)/(len(baseline_scores)+1))
    hard_signal=features["auth_fail_rate"]>=.5 or features["request_rate"]>=10 or features["error_rate"]>=2 or features["waf_suspicious_rate"]>=.2 or features["cpu_rate"]>=.8
    is_anomaly=(prediction==-1 and score>=ALERT_THRESHOLD) or hard_signal
    label="anomalie" if is_anomaly else "normal"

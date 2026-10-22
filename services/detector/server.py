@@ -1,5 +1,5 @@
 """Détecteur d'anomalies sur les métriques Prometheus, avec Isolation Forest."""
-import json, math, os, threading, time, urllib.error, urllib.parse, urllib.request
+import json, math, os, re, threading, time, urllib.error, urllib.parse, urllib.request
 from collections import deque
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -55,15 +55,15 @@ def collect_loki_features():
       suspicious[ip]=suspicious.get(ip,0)+1
       suspicious_count+=1
   source_ip=max(suspicious,key=suspicious.get) if suspicious and max(suspicious.values())>=3 else None
-  if source_ip and not re.fullmatch(r"(?:[0-9]{1,3}\\.){3}[0-9]{1,3}",source_ip): source_ip=None
+  if source_ip and not re.fullmatch(r"(?:[0-9]{1,3}\.){3}[0-9]{1,3}",source_ip): source_ip=None
   attack_type="unknown"
   for stream in payload.get("data",{}).get("result",[]):
    for _,line in stream.get("values",[]):
     try: item=json.loads(line)
     except (TypeError,ValueError): continue
     uri=urllib.parse.unquote(str(item.get("uri",""))).lower()
-    if any(token in uri for token in ("<script","union select","or 1=1","information_schema","%3cscript")):
-     attack_type="sqli" if any(token in uri for token in ("union select","or 1=1","information_schema")) else "sqli"
+    if any(token in uri for token in ("union select","or 1=1","information_schema")):
+     attack_type="sqli"
      break
    if attack_type=="sqli": break
   return {"distinct_source_ips":float(len(ips)),"waf_suspicious_rate":float(suspicious_count)/60.0,"source_ip":source_ip,"attack_type":attack_type}
@@ -92,7 +92,7 @@ def collect_features():
 def classify(features):
  if features.get("attack_type")=="sqli": return "sqli","api-paiement"
  if features["auth_fail_rate"]>=0.5: return "bruteforce","auth"
- if features["request_rate"]>=10 or features["error_rate"]>=2 or features["waf_suspicious_rate"]>=0.2 or features["cpu_rate"]>=0.8: return "dos","api-paiement"
+ if features["request_rate"]>=10 or features["error_rate"]>=2 or features["waf_suspicious_rate"]>=0.2: return "dos","api-paiement"
  return "unknown","api-paiement"
 
 def notify_remediation(kind,service,score,features):

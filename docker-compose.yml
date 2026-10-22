@@ -199,6 +199,11 @@ services:
       PORT: "5100"
       PROMETHEUS_URL: http://prometheus:9090
       REMEDIATION_URL: http://remediation:5000
+      REMEDIATION_TOKEN: ${REMEDIATION_TOKEN:-}
+      DETECTOR_INTERVAL_SECONDS: ${DETECTOR_INTERVAL_SECONDS:-10}
+      MIN_TRAINING_SAMPLES: ${MIN_TRAINING_SAMPLES:-30}
+      DETECTOR_ALERT_THRESHOLD: ${DETECTOR_ALERT_THRESHOLD:-0.78}
+      DETECTOR_ALERT_COOLDOWN_SECONDS: ${DETECTOR_ALERT_COOLDOWN_SECONDS:-120}
     depends_on:
       prometheus: { condition: service_healthy }
     networks: [app-net, observability-net]
@@ -211,6 +216,8 @@ services:
       PORT: "5200"
       OLLAMA_URL: http://ollama:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
+      RAG_DOCS_DIR: /docs
+      RAG_TOP_K: ${RAG_TOP_K:-4}
     volumes:
       - ./docs:/docs:ro
     networks: [ai-net, observability-net]
